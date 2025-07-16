@@ -86,7 +86,9 @@ def main(gtdbtk_folder, outfile, taxonomy_version, taxonomy_release, metadata_fi
         lineage_dict = tax.run(gtdbtk_folder, selected_archaea_metadata, selected_bacteria_metadata, "gtdbtk")
 
         # Restarting logging because the modules above reset it
-        logging.basicConfig(level=log_levels[logging_mode], force=True)
+        for handler in logging.root.handlers[:]:
+            logging.root.removeHandler(handler)
+        logging.basicConfig(level=log_levels[logging_mode])
 
         # lookup tax id
         lowest_taxon_mgyg_dict, lowest_taxon_lineage_dict = get_lowest_taxa(lineage_dict, sample_accessions)
