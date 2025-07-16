@@ -83,10 +83,10 @@ def main(gtdbtk_folder, outfile, taxonomy_version, taxonomy_release, metadata_fi
         else:
             tax = gtdb_to_ncbi_majority_vote_v2.Translate()
 
+        lineage_dict = tax.run(gtdbtk_folder, selected_archaea_metadata, selected_bacteria_metadata, "gtdbtk")
+
         # Restarting logging because the modules above reset it
         logging.basicConfig(level=log_levels[logging_mode], force=True)
-
-        lineage_dict = tax.run(gtdbtk_folder, selected_archaea_metadata, selected_bacteria_metadata, "gtdbtk")
 
         # lookup tax id
         lowest_taxon_mgyg_dict, lowest_taxon_lineage_dict = get_lowest_taxa(lineage_dict, sample_accessions)
