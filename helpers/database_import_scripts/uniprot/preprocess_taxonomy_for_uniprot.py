@@ -211,8 +211,13 @@ def remove_invalid_taxa(gca_to_taxid, gca_taxid_to_lineage):
     for gca_acc, taxid in gca_to_taxid.items():
         lineage = gca_taxid_to_lineage[taxid]
         lowest_taxon = get_lowest_taxon(lineage)[0]
-        if "metagenome" in lowest_taxon or str(taxid) == "77133" or any(
-            x in lineage for x in ["d__Viruses", "sk__Viruses"]):
+        invalid_conditions = [
+            "metagenome" in lowest_taxon,
+            # exclude taxa: uncultured bacterium, bacterium, archaeon, uncultured archaeon, uncultured prokaryote:
+            str(taxid) in ["77133", "1869227", "1906665", "115547", "198431"],
+            any(x in lineage for x in ["d__Viruses", "sk__Viruses"])
+        ]
+        if any(invalid_conditions):
             invalid_flag = True
             gca_to_taxid[gca_acc] = "invalid"
             logging.debug("----------------> FOUND INVALID TAXON", lineage)
