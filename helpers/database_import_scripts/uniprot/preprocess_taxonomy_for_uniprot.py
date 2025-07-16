@@ -626,8 +626,8 @@ def filter_taxid_dict(taxid_dict, lowest_taxon_lineage_dict, taxdump_path):
     If no match is found by using taxonkit, the script checks synonyms in names.dmp.
     
     @param taxid_dict: key = taxon name, value = list of taxids
-    @param lineage_dict: key = mgyg, value = full NCBI lineage
     @param lowest_taxon_lineage_dict: key = taxon name, value = list of lineages where the taxon is lowest
+    @param taxdump_path: path to the taxdump folder
     @return: filtered_taxid_dict: key = taxon name, value = dictionary where key = lineage, value = taxid
     """
     filtered_taxid_dict = dict()
