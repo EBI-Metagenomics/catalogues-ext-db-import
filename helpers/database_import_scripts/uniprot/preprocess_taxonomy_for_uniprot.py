@@ -126,7 +126,10 @@ def main(gtdbtk_folder, outfile, taxonomy_version, taxonomy_release, metadata_fi
             logging.debug("Processing {}".format(mgyg))
             if gca_accession in gca_to_taxid and gca_to_taxid[gca_accession] == "invalid":
                 logging.debug("In invalid")
-                lineage = lineage_dict[mgyg]
+                try:
+                    lineage = lineage_dict[mgyg]
+                except KeyError:
+                    sys.exit(f"Lineage for genome {mgyg} does not exist in converted GTDB data")
                 logging.debug("Lineage from GTDB was {}".format(lineage))
                 taxid_to_report, _, submittable, lineage = get_species_level_taxonomy(lineage, taxdump_path)
                 logging.debug("Lineage after processing is {}".format(lineage))
