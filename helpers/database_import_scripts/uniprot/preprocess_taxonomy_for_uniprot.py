@@ -501,15 +501,13 @@ def reformat_lineage(lineage, scientific_name):
             else:
                 logging.debug(
                     "Unresolved placement of scientific name {} in lineage {}".format(scientific_name, lineage))
-    ranks = ['superkingdom', 'kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'species']
+    ranks = ['domain', 'phylum', 'class', 'order', 'family', 'genus', 'species']
     reformatted_lineage = ';'.join(
-        [f'{"sk" if rank == "superkingdom" else rank[0]}__{ranks_values.get(rank, "")}' for rank in ranks]
+        [f'{rank[0]}__{ranks_values.get(rank, "")}' for rank in ranks]
     )
     logging.debug(
-        "Detected rank {} for scientific name {} in function reformat_lineage. After adding this to existing ranks we get {}. Formatted lineage now is {}.".format(
-            lowest_rank, scientific_name, ranks_values, reformatted_lineage))
-    if reformatted_lineage.startswith("k__"):
-        reformatted_lineage = reformatted_lineage.replace("k__", "d__")
+        "Detected rank {} for scientific name {} in function reformat_lineage. After adding this to existing ranks we "
+        "get {}. Formatted lineage now is {}.".format(lowest_rank, scientific_name, ranks_values, reformatted_lineage))
 
     logging.debug(reformatted_lineage)
     return reformatted_lineage
