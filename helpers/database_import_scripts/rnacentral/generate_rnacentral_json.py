@@ -368,7 +368,14 @@ def get_publications(genome_sample_accession, reported_project, insdc_accession)
                             sample_is_derived = True
                             break
                     if not sample_is_derived:  # we found the raw read sample
-                        biosamples.append(sample_to_check)
+                        # Check if the sample is a composite of multiple samples. This has so far only been seen
+                        # in the skin catalogue and the field name "sample composed of" appears to be non-standard.
+                        # For future cases this procedure might need to be modified
+                        aggregate_list = check_if_sample_is_aggregate(sample_attributes)
+                        if aggregate_list:
+                            biosamples.extend(aggregate_list)
+                        else:
+                            biosamples.append(sample_to_check)
             samples_to_check = samples_for_next_iteration
     # now we are working with raw read samples
     for biosample in biosamples:
@@ -399,6 +406,20 @@ def get_publications(genome_sample_accession, reported_project, insdc_accession)
                               format(insdc_accession))
                 sys.exit("ERROR: cannot proceed because at least one ENA sample is not found in ENA.")
     return sorted(list(filter(None, list(set(publications)))))
+
+
+def check_if_sample_is_aggregate(sample_attributes):
+    """
+    In some cases, a sample can be pooled from several different samples. This function checks for this
+    and if it finds that the sample is composed of multiple ones, it returns them as a list. Otherwise,
+    it returns None.
+    """
+    for attribute in sample_attributes:
+        if attribute["TAG"] == "sample composed of":
+            sample_list = re.findall("SAM[A-Z]+\d+|ERS\d+|SRS\d+|DRS\d+", attribute["VALUE"])
+            if len(sample_list) > 0:
+                return sample_list
+    return None
 
 
 def identify_derived_sample_issue(ena_data):
