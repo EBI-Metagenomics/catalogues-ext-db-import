@@ -20,7 +20,7 @@ def main(input_file):
         for line in file_in:
             justified = False
             mgyg, name, lineage, gca, taxid, species_level, _ = line.strip().split("\t")
-            if lineage.startswith("k_"):
+            if lineage.startswith(("k__", "sk__")):
                 print("Incorrect format of lineage {}".format(lineage))
                 no_errors = False
             if lineage.lower().startswith("d_virus"):
