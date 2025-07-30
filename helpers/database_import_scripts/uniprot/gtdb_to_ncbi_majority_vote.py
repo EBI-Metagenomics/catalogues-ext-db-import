@@ -8,6 +8,8 @@ from os.path import join
 
 import dendropy
 
+# Modified from https://github.com/Ecogenomics/GTDBTk/blob/master/scripts/gtdb_to_ncbi_majority_vote.py
+
 PATH_BAC120_TREE_FILE = join("classify", '{prefix}.bac120.classify.tree')
 PATH_AR122_TREE_FILE = join("classify", '{prefix}.ar122.classify.tree')
 PATH_BAC120_SUMMARY_OUT = join("classify", '{prefix}.bac120.summary.tsv')

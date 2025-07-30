@@ -9,6 +9,8 @@ from os.path import join
 
 import dendropy
 
+# Modified from https://github.com/Ecogenomics/GTDBTk/blob/master/scripts/gtdb_to_ncbi_majority_vote.py
+
 sys.setrecursionlimit(2000)
 
 logging.basicConfig(level=logging.INFO)
