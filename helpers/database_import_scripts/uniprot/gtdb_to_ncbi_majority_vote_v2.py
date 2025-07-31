@@ -446,14 +446,15 @@ class Translate(object):
 
                     fout[gid] = ncbi_mv
 
-        # Check if any accessions are missing
-        all_input_gids = set(gtdbtk_ar_assignments) | set(gtdbtk_bac_assignments)
-        unassigned = [gid for gid in all_input_gids if not fout.get(gid)]
-        if unassigned:
-            self.logger.warning(
-                f'Genomes with no NCBI assignment: {len(unassigned)}: {unassigned[:10]}{"..." if len(unassigned) > 10 else ""}')
+        # Check if any accessions are missing and fill them with original taxonomies
+        combined_assignments = {**gtdbtk_ar_assignments, **gtdbtk_bac_assignments}
+        for genome, gtdb_taxonomy in combined_assignments.items():
+            if not fout.get(genome):
+                self.logger.warning(
+                    f'Genome {genome} got no NCBI assignment. Assigning GTDB taxonomy: {gtdb_taxonomy}'
+                )
+                fout[genome] = gtdb_taxonomy
         return fout
-
 
     def run(self,
             gtdbtk_output_dir,
