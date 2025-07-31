@@ -448,12 +448,13 @@ class Translate(object):
 
         # Check if any accessions are missing and fill them with original taxonomies
         combined_assignments = {**gtdbtk_ar_assignments, **gtdbtk_bac_assignments}
-        for genome, gtdb_taxonomy in combined_assignments.items():
+        for genome, gtdb_taxonomy_fields in combined_assignments.items():
             if not fout.get(genome):
+                gtdb_lineage = ";".join(gtdb_taxonomy_fields)
                 self.logger.warning(
-                    f'Genome {genome} got no NCBI assignment. Assigning GTDB taxonomy: {gtdb_taxonomy}'
+                    f'Genome {genome} got no NCBI assignment. Assigning GTDB taxonomy: {gtdb_lineage}'
                 )
-                fout[genome] = gtdb_taxonomy
+                fout[genome] = gtdb_lineage
         return fout
 
     def run(self,
