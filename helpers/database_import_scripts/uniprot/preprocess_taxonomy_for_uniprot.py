@@ -88,8 +88,8 @@ def main(gtdbtk_folder, outfile, taxonomy_version, taxonomy_release, metadata_fi
         logging.basicConfig(level=log_levels[logging_mode])
 
         logging.debug("Lineage dict contents:")
-        for key, value in lineage_dict.items():
-            logging.debug(f"{key}: {value}")
+        for mgyg, lineage in lineage_dict.items():
+            logging.debug(f"{mgyg}: {lineage}")
 
         # lookup tax id
         lowest_taxon_mgyg_dict, lowest_taxon_lineage_dict = get_lowest_taxa(lineage_dict, sample_accessions)
