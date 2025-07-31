@@ -445,7 +445,13 @@ class Translate(object):
 
                     fout[gid] = ncbi_mv
 
+        # Check if any accessions are missing
+        unassigned = [gid for gid, val in fout.items() if not val]
+        if unassigned:
+            self.logger.warning(
+                f'Genomes with no NCBI assignment: {len(unassigned)}: {unassigned[:10]}{"..." if len(unassigned) > 10 else ""}')
         return fout
+
 
     def run(self,
             gtdbtk_output_dir,
