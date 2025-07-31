@@ -433,7 +433,8 @@ class Translate(object):
 
                     ncbi_rep_ids = self.get_ncbi_descendants(
                         leaf_node_map[gid],
-                        ncbi_sp_classification
+                        ncbi_sp_classification,
+                        leaf_to_gids=leaf_to_gids
                     )
 
                     ncbi_mv = self.get_ncbi_majority_vote(
