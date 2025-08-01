@@ -481,23 +481,33 @@ def lookup_lineage_in_ena(insdc_taxid):
 
 
 def reformat_lineage(lineage, scientific_name):
+    """
+    This function takes the lineage from ENA (e.g. "Bacteria; Pseudomonadati; Pseudomonadota; Gammaproteobacteria;
+    Enterobacterales; Enterobacteriaceae; Escherichia; Escherichia coli") and reformats it to GTDB-style:
+    d__Bacteria;p__Proteobacteria;c__Gammaproteobacteria;o__Enterobacterales;f__Enterobacteriaceae;g__Escherichia;
+    s__Escherichia coli
+    """
     logging.debug("Function reformat_lineage")
     higher_level = False
     ranks_values = dict()
     split_lineage = lineage.strip().split(";")
-    for element in split_lineage:
+    for element in split_lineage:  # go through each taxon in the ENA lineage
         element = element.lstrip()
         logging.debug(element)
         if element and not element.isspace():
             submittable, taxid, rank = query_scientific_name_from_ena(element, search_rank=True)
-            if element.lower() == scientific_name.lower() and rank not in ["subspecies", "species"]:
+            if element.lower() == scientific_name.lower() and rank not in ["subspecies", "species", "strain"]:
+                # The taxon level we are evaluating is the scientific name that has been assigned to the genome
+                # but it is not the lowest possible rank in the lineage
                 higher_level = True
                 logging.info(f"Scientific name {scientific_name} is already part of lineage {lineage}")
             ranks_values[rank] = element
             logging.debug(f"{element} {submittable} {taxid} {rank}")
+    # Get the rank of the scientific name
     _, _, lowest_rank = query_scientific_name_from_ena(scientific_name, search_rank=True)
+    # We don't include subspecies and strains separately; include them as species
     if lowest_rank and not lowest_rank == "no rank":
-        if lowest_rank == "subspecies":
+        if lowest_rank in ["subspecies", "strain"]:
             ranks_values["species"] = scientific_name
         else:
             ranks_values[lowest_rank] = scientific_name
