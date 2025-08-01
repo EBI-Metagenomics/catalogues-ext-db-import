@@ -383,7 +383,7 @@ def extract_bacteria_info(name, rank):
         submittable, taxid = query_scientific_name_from_ena(name)
     if not submittable:
         if name.startswith("uncultured"):
-            if name.endswith("sp.") or "Candidatus" in name:
+            if name.endswith(("sp.", " bacterium")) or "Candidatus" in name:
                 logging.debug("Removing uncultured")
                 name = name.replace("uncultured ", "")
                 submittable, taxid = query_scientific_name_from_ena(name)
