@@ -78,9 +78,9 @@ def main(gtdbtk_folder, outfile, taxonomy_version, taxonomy_release, metadata_fi
         # the GCA accession or the taxonomy we got from GCA is invalid. We need to use GTDB taxonomy and convert it
         # to NCBI taxonomy.
         selected_archaea_metadata, selected_bacteria_metadata = select_metadata(taxonomy_release, DB_DIR)
-        print(
-            "Using the following databases:\n{}\n{}\n{}\n".format(selected_archaea_metadata, selected_bacteria_metadata,
-                                                                  taxdump_path))
+        logging.info(
+            f"Using the following databases:"
+            f"\n{selected_archaea_metadata}\n{selected_bacteria_metadata}\n{taxdump_path}\n")
 
         if taxonomy_version == "1":
             tax = gtdb_to_ncbi_majority_vote.Translate()
@@ -127,7 +127,7 @@ def main(gtdbtk_folder, outfile, taxonomy_version, taxonomy_release, metadata_fi
                     result = future.result()
                     na_associated_lineages[lineage] = result
                 except Exception as e:
-                    print(f"Error processing lineage {lineage}: {e}")
+                    logging.error(f"Error processing lineage {lineage}: {e}")
 
         for mgyg, lineage in unknown_gca_mgyg_and_lineage.items():
             unknown_gca_mgyg_and_lineage[mgyg] = na_associated_lineages[lineage]
@@ -646,7 +646,7 @@ def run_taxonkit_on_dict(lowest_taxon_mgyg_dict, lowest_taxon_lineage_dict, taxd
         filtered_taxid_dict = filter_taxid_dict(taxid_dict, lowest_taxon_lineage_dict, taxdump_path)
         return filtered_taxid_dict
     except subprocess.CalledProcessError as e:
-        print("Error:", e.stderr)
+        logging.error(f"Error: {e.stderr}")
 
 
 def parse_domain_phylum(lineage: str):
