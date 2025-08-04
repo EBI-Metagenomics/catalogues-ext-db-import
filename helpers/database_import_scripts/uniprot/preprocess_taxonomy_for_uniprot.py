@@ -144,12 +144,12 @@ def main(gtdbtk_folder, outfile, taxonomy_version, taxonomy_release, metadata_fi
                 logging.debug("Lineage from GTDB was {}".format(lineage))
                 taxid_to_report, _, submittable, lineage = get_species_level_taxonomy(lineage, taxdump_path)
                 logging.debug("Lineage after processing is {}".format(lineage))
-                source = source.ENA
+                source = Source.ENA
                 lowest_taxon = get_lowest_taxon(lineage)[0]
                 logging.debug("Done processing {}".format(mgyg))
             elif gca_accession == "N/A" and species_level_taxonomy:
                 logging.debug("In N/A")
-                source = source.ENA
+                source = Source.ENA
                 taxid_to_report = unknown_gca_mgyg_and_lineage[mgyg]["taxid"]
                 lineage = unknown_gca_mgyg_and_lineage[mgyg]["lineage"]
                 logging.debug("Starting function with taxid {} and lineage {}".format(taxid_to_report, lineage))
@@ -159,7 +159,7 @@ def main(gtdbtk_folder, outfile, taxonomy_version, taxonomy_release, metadata_fi
                     logging.debug("Got lineage from GTDB: {}".format(lineage))
                     taxid_to_report, _, _, lineage = get_species_level_taxonomy(lineage, taxdump_path)
                     logging.debug("After processing lineage is {} and taxid is {}".format(lineage, taxid_to_report))
-                    source = source.TAXONKIT_ENA
+                    source = Source.TAXONKIT_ENA
                     if not taxid_to_report:
                         # Check if the taxon name has changed and update accordingly
                         gtdb_taxid = taxid_dict.get(lowest_taxon_mgyg_dict.get(mgyg, {}), {}).get(lineage, "")
@@ -169,7 +169,7 @@ def main(gtdbtk_folder, outfile, taxonomy_version, taxonomy_release, metadata_fi
                             "Tried to recover possible new name. Result taxid {} lineage {}".format(taxid_to_report,
                                                                                                     lineage))
                         if not taxid_to_report:
-                            source = source.GTDB
+                            source = Source.GTDB
                             lineage = lineage_dict[mgyg]
                             taxid_to_report = gtdb_taxid
                             logging.debug("That didnt work so reporting GTDB: lineage {} taxid {}".format(lineage,
@@ -181,7 +181,7 @@ def main(gtdbtk_folder, outfile, taxonomy_version, taxonomy_release, metadata_fi
                 logging.debug("In GCA")
                 insdc_taxid = gca_to_taxid[gca_accession]
                 lineage = gca_taxid_to_lineage[insdc_taxid]
-                source = source.TAXONKIT_ENA
+                source = Source.TAXONKIT_ENA
                 lowest_taxon = get_lowest_taxon(lineage)[0]
                 assert lowest_taxon, "Could not get retrieved name for lineage {}".format(lineage)
                 taxid_to_report = insdc_taxid
@@ -192,9 +192,9 @@ def main(gtdbtk_folder, outfile, taxonomy_version, taxonomy_release, metadata_fi
                     insdc_taxid = gca_to_taxid[gca_accession]
                     taxid_to_report = insdc_taxid
                     lineage = gca_taxid_to_lineage[taxid_to_report]
-                    source = source.TAXONKIT_ENA
+                    source = Source.TAXONKIT_ENA
                 else:
-                    source = source.GTDB
+                    source = Source.GTDB
                     lineage = lineage_dict[mgyg]
                     taxid_to_report = taxid_dict[lowest_taxon_mgyg_dict[mgyg]][lineage]
                 lowest_taxon = get_lowest_taxon(lineage)[0]
