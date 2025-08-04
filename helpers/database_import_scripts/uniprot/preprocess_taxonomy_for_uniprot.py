@@ -675,10 +675,19 @@ def get_lineage_for_taxid(taxid, taxdump_path):
     ]
     result = subprocess.run(command, input=taxid, text=True,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-    try:
-        return result.stdout.strip().split("\t")[1]
-    except IndexError:
-        raise ValueError(f"Unable to extract lineage for taxid {taxid}")
+
+    stdout = result.stdout.strip()
+    if not stdout:
+        raise ValueError(f"No output from taxonkit for taxid {taxid}; stderr: {result.stderr.strip()}")
+
+    taxonkit_output_fields = stdout.split("\t")
+    
+    if len(taxonkit_output_fields) < 2 or not taxonkit_output_fields[1].strip():
+        raise ValueError(
+            f"Unable to extract lineage for taxid {taxid}; taxonkit output was: '{stdout}'; "
+            f"stderr: {result.stderr.strip()}"
+        )
+    return taxonkit_output_fields[1]
 
 
 def filter_taxid_dict(taxid_dict, lowest_taxon_lineage_dict, taxdump_path):
@@ -708,6 +717,7 @@ def filter_taxid_dict(taxid_dict, lowest_taxon_lineage_dict, taxdump_path):
         logging.debug(f"\n\n\n------------------> resolving duplicates for {taxon_name}: {taxid_list}")
         expected_domains_and_phyla = get_domains_and_phyla(lowest_taxon_lineage_dict[taxon_name])
         logging.debug(f"Expected phyla obtained: {expected_domains_and_phyla}")
+
         resolved = False
 
         # go through taxids and identify the ones we need to keep
