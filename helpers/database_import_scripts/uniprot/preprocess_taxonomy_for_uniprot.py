@@ -696,8 +696,6 @@ def filter_taxid_dict(taxid_dict, lowest_taxon_lineage_dict, taxdump_path):
     # get synonyms from names.dmp
     synonyms = load_synonyms(taxdump_path)  # taxid -> [synonyms]
 
-    command = ["/hps/nobackup/rdf/metagenomics/service-team/users/tgurbich/Taxonkit/taxonkit", "reformat", "--data-dir",
-               taxdump_path, "-I", "1"]
     for taxon_name, taxid_list in taxid_dict.items():
         # trivial case: only one taxid
         if len(taxid_list) == 1:
