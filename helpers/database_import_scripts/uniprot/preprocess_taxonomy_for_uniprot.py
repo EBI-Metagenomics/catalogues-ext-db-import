@@ -197,8 +197,8 @@ def main(gtdbtk_folder, outfile, taxonomy_version, taxonomy_release, metadata_fi
                 submittable_print = "Valid for ENA"
             else:
                 submittable_print = "Not valid for ENA"
-            file_out.write("{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(
-                mgyg, lowest_taxon, lineage, gca_accession, taxid_to_report, species_level, submittable_print))
+            file_out.write("\t".join([mgyg, lowest_taxon, lineage, gca_accession, taxid_to_report, species_level,
+                                      submittable_print]) + "\n")
             logging.debug("{} {} {}".format(mgyg, lineage, source))
     logging.info("Printed results to {}".format(outfile))
 
