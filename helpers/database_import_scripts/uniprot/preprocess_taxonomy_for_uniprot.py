@@ -627,9 +627,10 @@ def run_taxonkit_on_dict(lowest_taxon_mgyg_dict, lowest_taxon_lineage_dict, taxd
         result = subprocess.run(command, input=input_data, text=True, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, check=True)
         taxid_dict, failed_to_get_taxonkit_taxid = process_taxonkit_output(result.stdout)
+        if failed_to_get_taxonkit_taxid:
+            logging.info(f"Failed to get taxid from taxonkit: {failed_to_get_taxonkit_taxid}. Will attempt to resolve "
+                         f"this later if a GTDB taxid is needed (last resort case).")
         # resolve cases where multiple taxid are assigned to a taxon
-        logging.info(f"Failed to get taxid from taxonkit: {failed_to_get_taxonkit_taxid}. Will attempt to resolve "
-                     f"this later if a GTDB taxid is needed (last resort case).")
         filtered_taxid_dict = filter_taxid_dict(taxid_dict, lowest_taxon_lineage_dict, taxdump_path)
         return filtered_taxid_dict
     except subprocess.CalledProcessError as e:
