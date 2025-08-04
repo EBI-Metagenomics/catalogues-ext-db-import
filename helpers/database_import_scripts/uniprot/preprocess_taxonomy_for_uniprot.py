@@ -681,7 +681,7 @@ def get_lineage_for_taxid(taxid, taxdump_path):
         raise ValueError(f"No output from taxonkit for taxid {taxid}; stderr: {result.stderr.strip()}")
 
     taxonkit_output_fields = stdout.split("\t")
-    
+
     if len(taxonkit_output_fields) < 2 or not taxonkit_output_fields[1].strip():
         raise ValueError(
             f"Unable to extract lineage for taxid {taxid}; taxonkit output was: '{stdout}'; "
@@ -809,7 +809,9 @@ def compare_positions(lineage1, lineage2, search_term):
     pos2 = find_position(lineage2, search_term)
 
     if pos1 is None or pos2 is None:
-        raise ValueError(f"Unable to find taxon '{search_term}' in lineages '{lineage1}' or '{lineage2}'")
+        logging.warning(f"Unable to find taxon '{search_term}' in lineages '{lineage1}' or '{lineage2}'; "
+                        f"skipping lineage")
+        return False
     return pos1 == pos2
 
 
