@@ -61,7 +61,7 @@ def format_lineage(taxonomy_lineage):
     formatted_output = "\n".join([indent + line.rstrip(" ") for line in lines])
     formatted_output = re.sub(r';$', '', formatted_output) + "."
     if "; ;" in formatted_output:
-        logging.info("Taxonomy lineage is missing fields: {}".format(formatted_output))
+        logging.debug("Taxonomy lineage is missing fields: {}".format(formatted_output))
     return formatted_output
 
 
@@ -78,9 +78,7 @@ REFERENCE   1
     with open(gbk_file, "r") as file_in, open(outfile, "w") as file_out:
         for line in file_in:
             if line.startswith("DEFINITION"):
-                species_to_print = species
-                if species_to_print.endswith("."):
-                    species_to_print = species[:-1]
+                species_to_print = species.rstrip(".")
                 line = line.replace("Genus species strain strain", species_to_print)
                 file_out.write(line)
             elif line.startswith("SOURCE") or re.match(r'^\s*\/organism=', line):
