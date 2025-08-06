@@ -117,12 +117,12 @@ function GenerateUniprotFiles {
 
     mitload miniconda && conda activate pybase
     python3 /nfs/production/rdf/metagenomics/pipelines/prod/catalogues-ext-db-import/helpers/database_import_scripts/uniprot/preprocess_taxonomy_for_uniprot.py \
-    -g ${RESULTS_PATH}/additional_data/gtdbtk_results/ -r "r214" -v "2" \
+    -g ${RESULTS_PATH}/additional_data/gtdbtk_results/ -v "2" \
     -m ${RESULTS_PATH}/ftp/genomes-all_metadata.tsv --species-level-taxonomy -t 4 \
     -o ${RESULTS_PATH}/additional_data/uniprot/preprocessed_taxonomy.tsv
 
     echo "Generating Uniprot files"
-    ACCS=$(ls ${RESULTS_PATH}/additional_data/prokka_gbk_species_reps/${F}.gbk | rev | cut -d '/' -f1 | rev | sed "s/\.gbk//")
+    ACCS=$(ls ${RESULTS_PATH}/additional_data/prokka_gbk_species_reps/*.gbk | rev | cut -d '/' -f1 | rev | sed "s/\.gbk//")
 
     for F in $ACCS; do python3 /nfs/production/rdf/metagenomics/pipelines/prod/catalogues-ext-db-import/helpers/database_import_scripts/uniprot/convert_gbk.py \
     -g ${RESULTS_PATH}/additional_data/prokka_gbk_species_reps/${F}.gbk \
