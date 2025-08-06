@@ -108,6 +108,10 @@ def process_mgyg_entry(
                     lineage = lineage_dict.get(mgyg, "")
                     taxid_to_report = gtdb_taxid
                     logging.debug(f"That didnt work so reporting GTDB: lineage {lineage} taxid {taxid_to_report}")
+                else:
+                    # In rare cases, there might be no taxid (taxonkit did not pick it up for a GTDB lineage)
+                    # Try to roll up the lineage to the highest level known taxon
+                    taxid_to_report, lineage = roll_up_lineage(lineage, taxdump_path)
         lowest_taxon = get_lowest_taxon(lineage)[0]
         submittable, _ = query_scientific_name_from_ena(lowest_taxon, search_rank=False)
         logging.debug(f"Done processing {mgyg}")
@@ -137,7 +141,16 @@ def process_mgyg_entry(
         lowest_taxon = get_lowest_taxon(lineage)[0]
         submittable, _ = query_scientific_name_from_ena(lowest_taxon, search_rank=False)
 
-    species_level = False if lineage.endswith("s__") else True
+    species_level = not lineage.endswith("s__")
+
+    if not species_level:
+        # Try to roll up
+        rolled_up_taxid, rolledup_lineage = roll_up_lineage(lineage, taxdump_path)
+        if rolled_up_taxid and rolledup_lineage:
+            taxid_to_report = rolled_up_taxid
+            lineage = rolledup_lineage
+            species_level = not lineage.endswith("s__")
+            submittable = True
     submittable_print = "Valid for ENA" if submittable else "Not valid for ENA"
 
     return EntryResult(
@@ -324,6 +337,33 @@ def process_lineage(arguments):
     l, taxdump_path = arguments
     taxid, name, submittable, lineage = get_species_level_taxonomy(l, taxdump_path)
     return {"taxid": taxid, "name": name, "submittable": submittable, "lineage": lineage}
+
+
+def roll_up_lineage(lineage, taxdump_path):
+    """
+    Given a GTDB-style taxonomic lineage, find the lowest taxon that can be turned into a valid species name.
+
+    Parameters:
+    lineage (str): GTDB-style lineage string (e.g. 'd__Bacteria;p__Proteobacteria;...;s__')
+    taxdump_path (str): Path to NCBI taxdump for lineage lookup
+    """
+
+    # Split lineage and remove taxa without a name
+    levels = lineage.split(";")
+    levels = [level for level in levels if not level.endswith("__")]  # Skip unnamed taxa
+
+    # Try from the most specific (end) to least specific (beginning)
+    for i in reversed(range(len(levels))):
+        truncated_lineage = ";".join(levels[:i + 1])
+        try:
+            taxid, name, submittable, updated_lineage = get_species_level_taxonomy(truncated_lineage, taxdump_path)
+            if submittable:
+                logging.debug(f"Successfully rolled up lineage {lineage} to {updated_lineage}")
+                return taxid, updated_lineage
+        except Exception as e:
+            logging.warning(f"Failed to process lineage during roll up '{truncated_lineage}': {e}")
+            continue
+    return "", ""
 
 
 def remove_invalid_taxa(gca_to_taxid, gca_taxid_to_lineage):
