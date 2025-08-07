@@ -2,7 +2,7 @@
 
 set -e
 
-# The script runs RNACentral file generation, validation and some output reorganisation
+# The script runs RNACentral and UniProt file generation, validation and some output reorganisation
 
 function Usage {
     echo "Usage: $0 [-f ftp-folder-name] [-v catalogue-version] [-r /path/to/results/folder]"
@@ -10,6 +10,7 @@ function Usage {
     echo "-f   FTP name of the catalogue, for example, human-oral or non-model-fish-gut"
     echo "-v   Catalogue version, for example, v1.0"
     echo "-r   Full path to nextflow pipeline results folder"
+    echo "-j   Full path to the previous catalogue JSON, if this is an update (skip if this is not an update)"
     exit 1
 }
 
@@ -169,4 +170,4 @@ cd "${RESULTS_PATH}"
 GenerateRNACentralJSON
 CheckRNACentralErrors
 RunRNACentralValidator
-#GenerateUniprotFiles
+GenerateUniprotFiles
