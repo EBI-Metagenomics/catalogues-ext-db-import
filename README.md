@@ -1,6 +1,6 @@
-## Post-processing scripts for data submission to RNACentral and Uniprot
+## Genome catalogue post-processing scripts for data submission to RNACentral and Uniprot
 
-This repository contains two sets of scripts that are executed after the genomes pipeline [] is completed.
+This repository contains two sets of scripts that are executed after the [genomes catalogue pipeline](https://github.com/EBI-Metagenomics/genomes-catalogue-pipeline) is completed.
 Both sets of scripts can be run by the `run_data_generation.sh` script:
 
 ```bash
