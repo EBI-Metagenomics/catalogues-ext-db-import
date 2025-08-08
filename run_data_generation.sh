@@ -113,7 +113,7 @@ function GenerateUniprotFiles {
     mkdir -p ${RESULTS_PATH}/additional_data/uniprot ${RESULTS_PATH}/additional_data/uniprot/uniprot-files
     if [[ -f ${RESULTS_PATH}/additional_data/gtdbtk_results.tar.gz ]]
     then
-        tar -xf ${RESULTS_PATH}/additional_data/gtdbtk_results.tar.gz
+        tar -xf ${RESULTS_PATH}/additional_data/gtdbtk_results.tar.gz -C ${RESULTS_PATH}/additional_data/
     fi
 
     mitload miniconda && conda activate pybase
@@ -137,12 +137,21 @@ function GenerateUniprotFiles {
 
     echo "Uniprot cleanup"
     # gzip the gtdb directory
-    cd ${RESULTS_PATH}/additional_data/
-    if [[ ! -f ${RESULTS_PATH}/additional_data/gtdbtk_results.tar.gz ]]
-    then
-        tar -czvf ${RESULTS_PATH}/additional_data/gtdbtk_results.tar.gz gtdbtk_results && rm -r gtdbtk_results
-    else
-        rm -r gtdbtk_results
+    cd ${RESULTS_PATH}/additional_data/ || {
+    echo "Error: Cannot change to directory ${RESULTS_PATH}/additional_data/. Exiting." >&2
+    exit 1
+    }
+    if [[ -d gtdbtk_results ]]; then
+      if [[ ! -f gtdbtk_results.tar.gz ]]; then
+          if tar -czvf gtdbtk_results.tar.gz gtdbtk_results; then
+              rm -r gtdbtk_results
+          else
+              echo "GTDB-Tk compression failed. Directory not removed." >&2
+          fi
+      else
+          echo "GTDB-Tk archive exists. Deleting directory without backing up."
+          rm -r gtdbtk_results
+      fi
     fi
 }
 
