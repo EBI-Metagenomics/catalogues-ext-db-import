@@ -2,17 +2,32 @@
 
 set -e
 
+VERSION="1.0.0"
+
 # The script runs RNACentral and UniProt file generation, validation and some output reorganisation
 
 function Usage {
     echo "Usage: $0 [-f ftp-folder-name] [-v catalogue-version] [-r /path/to/results/folder]"
     echo "Options:"
-    echo "-f   FTP name of the catalogue, for example, human-oral or non-model-fish-gut"
-    echo "-v   Catalogue version, for example, v1.0"
-    echo "-r   Full path to nextflow pipeline results folder"
-    echo "-j   Full path to the previous catalogue JSON, if this is an update (skip if this is not an update)"
+    echo "-f          FTP name of the catalogue, for example, human-oral or non-model-fish-gut"
+    echo "-v          Catalogue version, for example, v1.0"
+    echo "-r          Full path to nextflow pipeline results folder"
+    echo "-j          Full path to the previous catalogue JSON, if this is an update (skip if this is not an update)"
+    echo "--version   Show script version"
     exit 1
 }
+
+print_version() {
+    echo "MyScript version $VERSION"
+}
+
+case "$1" in
+    --version)
+        print_version
+        exit 0
+        ;;
+esac
+
 
 GET_REPS() {
     cut -f14 "${RESULTS_PATH}"/genomes-all_metadata.tsv | grep -v "Species" | sort -u
