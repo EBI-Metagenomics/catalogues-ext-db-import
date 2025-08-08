@@ -18,7 +18,7 @@ function Usage {
 }
 
 print_version() {
-    echo "MyScript version $VERSION"
+    echo "Post-processing data generation script version $VERSION"
 }
 
 case "$1" in
@@ -149,6 +149,9 @@ function GenerateUniprotFiles {
     python3 /nfs/production/rdf/metagenomics/pipelines/prod/catalogues-ext-db-import/helpers/database_import_scripts/uniprot/generate_uniprot_metadata.py \
     -m ${RESULTS_PATH}/genomes-all_metadata.tsv -o ${RESULTS_PATH}/additional_data/uniprot/${CATALOGUE_FOLDER}_${CATALOGUE_VERSION}_uniprot_metadata.tsv \
     -p ${RESULTS_PATH}/additional_data/uniprot/preprocessed_taxonomy.tsv
+
+    echo "Adding version"
+    echo "$VERSION" > "${RESULTS_PATH}/additional_data/uniprot/VERSION.txt"
 
     echo "UniProt cleanup"
     # gzip the gtdb directory
