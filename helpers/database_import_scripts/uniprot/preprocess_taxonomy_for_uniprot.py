@@ -597,7 +597,7 @@ def lookup_lineage(insdc_taxid, taxdump_path):
             detected_lineage = detected_lineage.replace("k__", "d__")
         return detected_lineage
 
-    logging.info(f"Looking up lineage for taxid {insdc_taxid} in ENA.")
+    logging.debug(f"Looking up lineage for taxid {insdc_taxid} in ENA.")
     try:
         lineage = lookup_lineage_in_ena(insdc_taxid)
         return lineage
@@ -703,7 +703,7 @@ def parse_metadata(metadata_file):
         sample_accessions[row['Genome']] = row['Sample_accession']
         if row['Genome_accession'].startswith("GCA"):
             gca_accessions[row['Genome']] = row['Genome_accession']
-            logging.info(f"GCA accession already in metadata table {row['Genome_accession']}")
+            logging.debug(f"GCA accession already in metadata table {row['Genome_accession']}")
     return gca_accessions, sample_accessions
 
 
