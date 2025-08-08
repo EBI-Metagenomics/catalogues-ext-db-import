@@ -3,6 +3,7 @@
 set -e
 
 VERSION="1.0.0"
+DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # The script runs RNACentral and UniProt file generation, validation and some output reorganisation
 
@@ -151,7 +152,8 @@ function GenerateUniprotFiles {
     -p ${RESULTS_PATH}/additional_data/uniprot/preprocessed_taxonomy.tsv
 
     echo "Adding version"
-    echo "$VERSION" > "${RESULTS_PATH}/additional_data/uniprot/VERSION.txt"
+    echo "script_version: $VERSION" > "${RESULTS_PATH}/additional_data/uniprot/VERSION.txt"
+    echo "date_generated: $DATE" >> "${RESULTS_PATH}/additional_data/uniprot/VERSION.txt"
 
     echo "UniProt cleanup"
     # gzip the gtdb directory
