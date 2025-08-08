@@ -138,7 +138,7 @@ function GenerateUniprotFiles {
     -o ${RESULTS_PATH}/additional_data/uniprot/preprocessed_taxonomy.tsv
 
     echo "Generating UniProt files"
-    ACCS=$(ls ${RESULTS_PATH}/additional_data/prokka_gbk_species_reps/*.gbk | rev | cut -d '/' -f1 | rev | sed "s/\.gbk//")
+    ACCS=$(find /nfs/production/rdf/metagenomics/catalogs/soil/v1.0/additional_data/prokka_gbk_species_reps/ -name "*.gbk" -type f -print | sed 's#.*/##' | sed 's/\.gbk$//')
 
     for F in $ACCS; do python3 /nfs/production/rdf/metagenomics/pipelines/prod/catalogues-ext-db-import/helpers/database_import_scripts/uniprot/convert_gbk.py \
     -g ${RESULTS_PATH}/additional_data/prokka_gbk_species_reps/${F}.gbk \
