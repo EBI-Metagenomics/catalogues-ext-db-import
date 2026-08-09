@@ -15,7 +15,8 @@ import time
 from Bio import SeqIO
 from Bio.Seq import Seq
 import requests
-from retry import retry
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import urllib.parse
 import xmltodict
 
@@ -26,6 +27,29 @@ SKIP_CMSCAN = SKIP_GFF = GOOD = BAD_SEQUENCE = 0
 skip_short = list()
 skip_total = list()
 ERROR_404 = list()
+
+
+def make_session():
+    """Builds a requests Session with automatic retries on connection errors
+    and transient 5xx/429 responses, using exponential backoff.
+    """
+    session = requests.Session()
+    retry_strategy = Retry(
+        total=6,
+        connect=6,  # retries on connection refused / DNS errors
+        read=6,
+        status_forcelist=[429, 500, 502, 503, 504],
+        backoff_factor=3,  # sleeps: 3, 6, 12, 24, 48, 96s between attempts
+        allowed_methods=["GET"],
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+
+SESSION = make_session()
 
 
 def main(rfam_info, metadata, outfile, deoverlap_dir, gff_dir, fasta_dir, previous_json):
@@ -94,9 +118,9 @@ def main(rfam_info, metadata, outfile, deoverlap_dir, gff_dir, fasta_dir, previo
 
 def up_the_version(json_data, index, old_version):
     json_data[index]['version'] = str(int(old_version) + 1)
-    return json_data 
-    
-    
+    return json_data
+
+
 def get_entry(json_data, primary_id, top_level):
     if top_level:
         json_data_for_iteration = json_data[top_level]
@@ -105,7 +129,7 @@ def get_entry(json_data, primary_id, top_level):
     for entry in json_data_for_iteration:
         if entry['primaryId'] == primary_id:
             return entry
-    
+
 
 def get_primary_ids(json_data):
     previous_primary_ids = list()
@@ -113,12 +137,12 @@ def get_primary_ids(json_data):
         previous_primary_ids.append(entry["primaryId"])
     return previous_primary_ids
 
-    
+
 def load_previous_json(file):
     with open(file, "r") as file_in:
         previous_json_data = json.load(file_in)
     return previous_json_data
-    
+
 
 def get_date():
     now = datetime.now()
@@ -143,8 +167,8 @@ def check_inputs_existence(deoverlap_dir, gff_dir, fasta_dir):
     if not os.path.exists(fasta_dir):
         logging.exception("Fasta directory doesn't exist. Expected path: {}".format(fasta_dir))
         sys.exit()
-    
-    
+
+
 def generate_metadata_dict(ftp, produced_date):
     """Generates the metadata object for the entire JSON.
 
@@ -197,7 +221,7 @@ def generate_data_dict(mgnify_accession, sample_accession, taxonomy, deoverlap_d
     hits_to_report = get_good_hits(deoverlap_path, rfam_lengths)
 
     dict_list = list()
-    
+
     read_function = gzip.open if gff_path.endswith('.gz') else open
     fasta_file = glob.glob(os.path.join(fasta_dir, mgnify_accession + ".*"))[0]
     seq_records = SeqIO.to_dict(SeqIO.parse(fasta_file, "fasta"))
@@ -213,8 +237,8 @@ def generate_data_dict(mgnify_accession, sample_accession, taxonomy, deoverlap_d
                     fields = line.strip().split("\t")
                     if fields[1].startswith(("INFERNAL", "tRNAscan-SE")):
                         contig, start, end, strand, annotation = fields[0], int(fields[3]), int(fields[4]), fields[6], \
-                                                                 fields[8]
-                        # Only process ncRNA records that are either good quality infernal hits 
+                            fields[8]
+                        # Only process ncRNA records that are either good quality infernal hits
                         # (i.e. included in hits_to_report) or tRNAscan-SE hits
                         if (contig in hits_to_report and [start, end] in hits_to_report[contig]) or \
                                 fields[1].startswith("tRNAscan-SE"):
@@ -231,19 +255,19 @@ def generate_data_dict(mgnify_accession, sample_accession, taxonomy, deoverlap_d
                             if fields[1].startswith("INFERNAL"):
                                 data_dict["sourceModel"] = "RFAM:{}".format(get_annotation_record(annotation, "rfam"))
                             else:
-                                data_dict["sourceModel"] = "TRNASCANSE:{}".format(get_annotation_record(annotation, 
+                                data_dict["sourceModel"] = "TRNASCANSE:{}".format(get_annotation_record(annotation,
                                                                                                         "isotype"))
-                                data_dict["sequenceFeatures"] = {"anticodon": get_annotation_record(annotation, 
+                                data_dict["sequenceFeatures"] = {"anticodon": get_annotation_record(annotation,
                                                                                                     "anticodon")}
                             data_dict["genomeLocations"] = make_genome_locations(contig, start, end, strand,
                                                                                  mgnify_accession)
                             data_dict["url"] = \
-                                "https://www.ebi.ac.uk/metagenomics/genomes/{}?contig_id={}&start={}&end={}&functional-annotation=ncrna#genome-browser".\
-                                format(mgnify_accession, contig, start, end)
+                                "https://www.ebi.ac.uk/metagenomics/genomes/{}?contig_id={}&start={}&end={}&functional-annotation=ncrna#genome-browser". \
+                                    format(mgnify_accession, contig, start, end)
                             if sample_accession in sample_publication_mapping:
                                 data_dict["publications"] = sample_publication_mapping[sample_accession]
                             else:
-                                data_dict["publications"] = get_publications(sample_accession, reported_project, 
+                                data_dict["publications"] = get_publications(sample_accession, reported_project,
                                                                              insdc_accession)
                                 sample_publication_mapping[sample_accession] = data_dict["publications"]
                             data_dict["additionalAnnotations"] = {"catalog_name": catalogue_name}
@@ -256,15 +280,15 @@ def generate_data_dict(mgnify_accession, sample_accession, taxonomy, deoverlap_d
                             skip_total.append("{}_{}_{}".format(contig, start, end))
     # TO DO: Print a warning if there are no hits in GFF but there are hits in hits_to_report
     return dict_list, sample_publication_mapping
-        
-        
+
+
 def get_annotation_record(annotation, field):
     parts = annotation.strip().split(";")
     for part in parts:
         if part.startswith(field):
             return part.split("=")[1]
-        
-    
+
+
 def pass_seq_check(seq):
     count_n = seq.lower().count('n')
     total_length = len(seq)
@@ -272,8 +296,8 @@ def pass_seq_check(seq):
         return True
     else:
         return False
-    
-    
+
+
 def get_seq_name(annotation, annotation_source):
     """Return the name of the matched sequence.
 
@@ -379,7 +403,7 @@ def get_publications(genome_sample_accession, reported_project, insdc_accession)
             samples_to_check = samples_for_next_iteration
     # now we are working with raw read samples
     for biosample in biosamples:
-        if biosample.startswith("ERS"): 
+        if biosample.startswith("ERS"):
             biosample = convert_bin_sample(biosample)  # convert to biosample
         project_accessions = get_project_accession(biosample)  # find what project the sample is from
         if not project_accessions and raw_data_sample:
@@ -393,7 +417,7 @@ def get_publications(genome_sample_accession, reported_project, insdc_accession)
             publications.extend(list(publications_to_add))
         else:
             logging.warning("Could not obtain project accessions for sample {}".
-                          format(genome_sample_accession))
+                            format(genome_sample_accession))
     if not biosamples:
         if ena_format_issue is True:
             logging.warning("Unable to obtain citation information for sample {} due to format errors in ENA. "
@@ -424,7 +448,7 @@ def check_if_sample_is_aggregate(sample_attributes):
 
 def identify_derived_sample_issue(ena_data):
     derived_from_list = list()
-    # check if runs were reported instead of sampples
+    # check if runs were reported instead of samples
     runs = re.findall("ERR\d+|SRR\d+|DRR\d+", ena_data)
     if len(runs) > 0:
         for run in runs:
@@ -442,8 +466,8 @@ def identify_derived_sample_issue(ena_data):
             except:
                 logging.warning("Unable to obtain sample accession for  run {} from ENA".format(run))
     return derived_from_list
-    
-    
+
+
 def check_sample_level(genome_sample_accession):
     api_endpoint = "https://www.ebi.ac.uk/ena/portal/api/filereport"
     query = {
@@ -459,9 +483,11 @@ def check_sample_level(genome_sample_accession):
     return False
 
 
-@retry(tries=5, delay=10, backoff=1.5)
 def run_request(query, api_endpoint):
-    r = requests.get(api_endpoint, params=urllib.parse.urlencode(query))
+    """Runs a GET request against the ENA API. Connection errors and transient
+    5xx/429 responses are retried automatically by SESSION's retry adapter.
+    """
+    r = SESSION.get(api_endpoint, params=urllib.parse.urlencode(query))
     r.raise_for_status()
     return r
 
@@ -503,12 +529,20 @@ def get_publications_from_xml(project):
                     pub = "PMID:{}".format(element["XREF_LINK"]["ID"])
                     extracted_publications.append(pub)
     return set(extracted_publications)
-        
+
 
 def get_project_accession(biosample):
+    """Fetches the project accession(s) for a biosample via the ENA filereport API.
+    Relies on SESSION's retry adapter to absorb transient connection errors / 5xx.
+    Only exits if retries are exhausted or the response is genuinely malformed.
+    """
     api_endpoint = "https://www.ebi.ac.uk/ena/portal/api/filereport"
     full_url = "{}?accession={}&result=read_run&fields=secondary_study_accession".format(api_endpoint, biosample)
-    r = requests.get(url=full_url)
+    try:
+        r = SESSION.get(url=full_url)
+    except requests.exceptions.RequestException as exc:
+        logging.error("Request to ENA failed after retries for biosample {}: {}".format(biosample, exc))
+        sys.exit("ERROR: cannot proceed - ENA API unreachable for biosample {}.".format(biosample))
     if r.ok:
         projects = list()
         elements = r.text.split("\n")
@@ -523,7 +557,8 @@ def get_project_accession(biosample):
                 projects.append(project_to_add)
         return set(projects)
     else:
-        logging.error("Error when requesting study accession for biosample {}".format(biosample))
+        logging.error("Error when requesting study accession for biosample {} (status {})".format(
+            biosample, r.status_code))
         logging.error(r.text)
         sys.exit()
         # return None
@@ -535,25 +570,20 @@ def load_xml(sample_id, insdc_accession=None):
             sample_id))
         return None
     xml_url = 'https://www.ebi.ac.uk/ena/browser/api/xml/{}'.format(sample_id)
-    try:
-        r = run_xml_request(xml_url)
-    except:
-        if r is None:
-            if not insdc_accession.startswith(("GCA", "GUT_", "NA")):
-                logging.error("Unable to get XML for sample {}, ENA genome {}".format(sample_id, insdc_accession))
-                sys.exit()
-            else:
-                logging.warning("Unable to get XML for accession {}. Skipping.".format(sample_id))
-                return None
+    r = run_xml_request(xml_url)
+    if r is None:
+        # Retries in run_xml_request/SESSION were exhausted with no usable response at all
+        if insdc_accession is not None and not insdc_accession.startswith(("GCA", "GUT_", "NA")):
+            logging.error("Unable to get XML for sample {}, ENA genome {}".format(sample_id, insdc_accession))
+            sys.exit()
         else:
-            if r.status_code == 404:
-                logging.warning("Sample {} does not seem to be present in ENA".format(sample_id))
-                ERROR_404.append(sample_id)
-                return None
-            else:
-                logging.error("There is an unexpected error requesting data from ENA for sample {}: {}".format(
-                    sample_id, r.text))
-                sys.exit()
+            logging.warning("Unable to get XML for accession {}. Skipping.".format(sample_id))
+            return None
+    if r.status_code == 404:
+        logging.warning("Sample {} does not seem to be present in ENA".format(sample_id))
+        if sample_id not in ERROR_404:
+            ERROR_404.append(sample_id)
+        return None
     if r.ok:
         try:
             data_dict = xmltodict.parse(r.content)
@@ -563,45 +593,25 @@ def load_xml(sample_id, insdc_accession=None):
         except:
             logging.exception("Unable to load json from API for accession {}".format(sample_id))
             print(r.text)
+            return None
     else:
         logging.error('Could not retrieve xml for accession {}'.format(sample_id))
-        if r.status_code == 404:
-            logging.warning("Reason: sample is not in ENA")
-            if sample_id not in ERROR_404:
-                ERROR_404.append(sample_id)
-        else:
-            logging.error("Error in full: {}".format(r.text))
-            sys.exit("Program is exiting - unable to query ENA for sample {}. Error code {}".format(sample_id, 
-                                                                                                    r.status_code))
-        return None
+        logging.error("Error in full: {}".format(r.text))
+        sys.exit("Program is exiting - unable to query ENA for sample {}. Error code {}".format(
+            sample_id, r.status_code))
 
 
 def run_xml_request(xml_url):
-    attempt = 0
-    max_attempts = 3
-    delay = 20
-    r = None
-    while attempt < max_attempts:
-        if attempt > 0:
-            time.sleep(delay * attempt)
-        try:
-            r = requests.get(xml_url)
-            r.raise_for_status()
-            return r
-        except requests.exceptions.HTTPError as http_err:
-            attempt += 1
-            if r is not None and r.status_code == 404:
-                print(f"Error: 404 Not Found for URL: {xml_url}.")
-                # try one more time, unlikely that this error will resolve itself
-                if attempt < 2:
-                    attempt = 2  # bumping attempt up so that there is only one rerun
-                    print("Trying one more time...")
-            else:
-                print(f"HTTP error occurred: {http_err}. Retrying...")
-        except Exception as err:
-            attempt += 1
-            print(f"An unexpected error occurred: {err}. Retrying...")
-    return r
+    """Performs the GET request for an ENA XML record. Connection errors and
+    transient 5xx are already retried by SESSION's retry adapter; this wrapper
+    just guards against the (rare) case that every retry attempt raised.
+    """
+    try:
+        r = SESSION.get(xml_url)
+        return r
+    except requests.exceptions.RequestException as exc:
+        logging.error("Request to ENA XML endpoint failed after retries: {} ({})".format(xml_url, exc))
+        return None
 
 
 def get_sequence(seq_records, contig, start, end, strand):
@@ -614,7 +624,7 @@ def get_sequence(seq_records, contig, start, end, strand):
     :param strand: Strand from the GFF
     :return: DNA sequence (reverse complement if the sequence is on the minus strand)
     """
-    seq = seq_records[contig][start-1:end].seq
+    seq = seq_records[contig][start - 1:end].seq
     if strand == "-":
         seq = Seq(seq).reverse_complement()
     return str(seq).upper()
@@ -640,12 +650,12 @@ def get_good_hits(file, rfam_lengths):
     hits_to_report = dict()
     with open(file, 'r') as f:
         for line in f:
-             if not line.startswith("#"):
+            if not line.startswith("#"):
                 parts = line.strip().split()
                 model_start, model_end = int(parts[7]), int(parts[8])
                 model_acc, contig, contig_start, contig_end = parts[2], parts[3], int(parts[9]), int(parts[10])
                 if model_end > model_start:
-                    perc_covered = abs(model_end - model_start) * 100/rfam_lengths[model_acc]
+                    perc_covered = abs(model_end - model_start) * 100 / rfam_lengths[model_acc]
                 else:
                     sys.exit("Model end smaller than model start")
                 if perc_covered >= 80.0:
