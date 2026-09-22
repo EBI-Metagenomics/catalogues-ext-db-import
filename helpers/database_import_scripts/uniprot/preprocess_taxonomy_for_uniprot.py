@@ -19,7 +19,6 @@ from retry import retry
 
 import gtdb_to_ncbi_majority_vote, gtdb_to_ncbi_majority_vote_v2
 
-
 DB_DIR = "/nfs/production/rdf/metagenomics/pipelines/prod/assembly-pipeline/taxonomy_dbs/"
 
 DUMP_DICT = {
@@ -51,16 +50,16 @@ class EntryResult:
 
 
 def process_mgyg_entry(
-    mgyg: str,
-    gca_accession: str,
-    gca_to_taxid: dict,
-    gca_taxid_to_lineage: dict,
-    lineage_dict: dict,
-    lowest_taxon_mgyg_dict: dict,
-    taxid_dict: dict,
-    unknown_gca_mgyg_and_lineage: dict,
-    species_level_taxonomy: bool,
-    taxdump_path: str,
+        mgyg: str,
+        gca_accession: str,
+        gca_to_taxid: dict,
+        gca_taxid_to_lineage: dict,
+        lineage_dict: dict,
+        lowest_taxon_mgyg_dict: dict,
+        taxid_dict: dict,
+        unknown_gca_mgyg_and_lineage: dict,
+        species_level_taxonomy: bool,
+        taxdump_path: str,
 ) -> EntryResult:
     """
     Returns an EntryResult with all required fields.
@@ -167,14 +166,14 @@ def process_mgyg_entry(
 
 
 def main(
-    gtdbtk_folder,
-    outfile,
-    taxonomy_version,
-    taxonomy_release,
-    metadata_file,
-    species_level_taxonomy,
-    threads,
-    logging_mode,
+        gtdbtk_folder,
+        outfile,
+        taxonomy_version,
+        taxonomy_release,
+        metadata_file,
+        species_level_taxonomy,
+        threads,
+        logging_mode,
 ):
     log_levels = {
         'error': logging.ERROR,
@@ -371,6 +370,11 @@ def remove_invalid_taxa(gca_to_taxid, gca_taxid_to_lineage):
     invalid_flag = False
     logging.debug("=================== Starting invalid check ===================")
     for gca_acc, taxid in gca_to_taxid.items():
+        if taxid == "invalid":
+            # Already marked invalid in lookup_taxid_online because ENA returned no taxid for this GCA
+            invalid_flag = True
+            logging.debug(f"----------------> GCA WITHOUT TAXID IN ENA, TREATING AS INVALID: {gca_acc}")
+            continue
         lineage = gca_taxid_to_lineage[taxid]
         lowest_taxon = get_lowest_taxon(lineage)[0]
         invalid_conditions = [
@@ -390,8 +394,9 @@ def remove_invalid_taxa(gca_to_taxid, gca_taxid_to_lineage):
 
 def match_lineage_to_gca_taxid(gca_to_taxid, threads, taxdump_path):
     logging.debug("Function match_lineage_to_gca_taxid")
-    taxids = list(gca_to_taxid.values())
-    # Create a partial function to add the taxdump_path argument (technical solution to be able to run concurrent 
+    # Skip GCAs already marked "invalid" (no taxid could be retrieved from ENA); there is no lineage to look up
+    taxids = list({taxid for taxid in gca_to_taxid.values() if taxid != "invalid"})
+    # Create a partial function to add the taxdump_path argument (technical solution to be able to run concurrent
     # with two arguments
     partial_lookup_lineage = partial(lookup_lineage, taxdump_path=taxdump_path)
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
@@ -451,7 +456,7 @@ def query_scientific_name_from_ena(scientific_name, search_rank=False):
     response = run_full_url_request(url)
 
     try:
-        # Will raise exception if response status code is non-200 
+        # Will raise exception if response status code is non-200
         response.raise_for_status()
     except requests.exceptions.HTTPError:
         if search_rank:
@@ -589,7 +594,7 @@ def lookup_lineage(insdc_taxid, taxdump_path):
 
     def get_lineage(taxid, taxdump_path):
         assert taxid, "Unable to use taxdump for an unknown taxid"
-        command = ["/hps/nobackup/rdf/metagenomics/service-team/users/tgurbich/Taxonkit/taxonkit", "reformat", 
+        command = ["/hps/nobackup/rdf/metagenomics/service-team/users/tgurbich/Taxonkit/taxonkit", "reformat",
                    "--data-dir", taxdump_path, "-I", "1", "-P"]
         result = subprocess.run(command, input=taxid, text=True, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, check=True)
@@ -696,7 +701,7 @@ def parse_metadata(metadata_file):
     original_df = pd.read_csv(metadata_file, sep='\t')
     filtered_df = original_df[original_df['Genome'] == original_df['Species_rep']]
     for index, row in filtered_df.iterrows():
-        # Remove any records with unknown taxonomy according to GTDB-Tk. This should never happen 
+        # Remove any records with unknown taxonomy according to GTDB-Tk. This should never happen
         # except in marine v2.0 where this was a known issue
         if str(row['Lineage']).startswith("d__;"):
             logging.info(f"Skipping accession {row['Genome_accession']}; invalid taxonomy: {row['Lineage']}")
@@ -720,7 +725,7 @@ def get_gca_accession(sample):
     if r.ok:
         lines = r.text.split('\n')
         if len(lines) > 3:
-            # check if the same GCA accession is duplicated; if there are distinct GCAs linked to the same 
+            # check if the same GCA accession is duplicated; if there are distinct GCAs linked to the same
             # sample accession, don't take any of them because we don't know which one is correct
             filtered_lines = list(set([item for item in lines if item != "" and item != "accession"]))
             if len(filtered_lines) == 1:
@@ -754,7 +759,14 @@ def lookup_taxid_online(gca_acc):
     r = run_query_request(api_endpoint, query_params)
     if r.ok:
         data = r.json()
-        taxid = data[0]['tax_id']
+        taxid = str(data[0].get("tax_id", "")).strip() if data else ""
+        if not taxid:
+            # The assembly search returned nothing (e.g. the GCA is not yet indexed)
+            # or returned a record without a taxid. We can't use the submitter taxonomy, so mark the GCA as
+            # "invalid" so that the genome falls back to converted GTDB taxonomy, the same route used for
+            # GCAs with unusable taxonomy in remove_invalid_taxa and process_mgyg_entry.
+            logging.debug(f"No taxid found in ENA assembly search for {gca_acc}; will use GTDB taxonomy instead")
+            return "invalid"
         return taxid
     else:
         sys.exit("Failed to fetch taxid for GCA accession {}. Aborting.".format(gca_acc))
@@ -779,7 +791,7 @@ def run_taxonkit_on_dict(lowest_taxon_mgyg_dict, lowest_taxon_lineage_dict, taxd
     logging.debug("Function run_taxonkit_on_dict")
     input_data = "\n".join(
         set(lowest_taxon_mgyg_dict.values()))  # remove duplicate taxa and save all lines to a variable
-    command = ["/hps/nobackup/rdf/metagenomics/service-team/users/tgurbich/Taxonkit/taxonkit", "name2taxid", 
+    command = ["/hps/nobackup/rdf/metagenomics/service-team/users/tgurbich/Taxonkit/taxonkit", "name2taxid",
                "--data-dir", taxdump_path]
     try:
         result = subprocess.run(command, input=input_data, text=True, stdout=subprocess.PIPE,
@@ -845,10 +857,10 @@ def get_lineage_for_taxid(taxid, taxdump_path):
 
 def filter_taxid_dict(taxid_dict, lowest_taxon_lineage_dict, taxdump_path):
     """
-    Resolve cases where multiple taxids are assigned to the same taxon by matching domain and phylum. 
+    Resolve cases where multiple taxids are assigned to the same taxon by matching domain and phylum.
     If domain and phylum match multiple taxon ids, the function picks the first one.
     If no match is found by using taxonkit, the script checks synonyms in names.dmp.
-    
+
     @param taxid_dict: key = taxon name, value = list of taxids
     @param lowest_taxon_lineage_dict: key = taxon name, value = list of lineages where the taxon is lowest
     @param taxdump_path: path to the taxdump folder
@@ -981,7 +993,7 @@ def pick_lineage(expected_domain, expected_phylum, lineage_list, dump_lineage):
     for lineage in lineage_list:
         domain, phylum = parse_domain_phylum(lineage)
         if domain == expected_domain and phylum == expected_phylum and \
-            last_non_empty_segment_position(lineage) == target_depth:
+                last_non_empty_segment_position(lineage) == target_depth:
             return lineage
     sys.exit("ERROR: could not resolve lineages: {} {} {}".format(expected_domain, expected_phylum, lineage_list))
 
@@ -1023,7 +1035,7 @@ def get_lowest_taxa(tax_dict, sample_accessions):
     lowest_taxon_lineage_dict = dict()
     for mgyg, lineage in tax_dict.items():
         # Don't try to process accessions that we have previously filtered out when reading the metadata table.
-        # This should only happen in cases where the taxonomic lineage in the metadata table is empty (no known 
+        # This should only happen in cases where the taxonomic lineage in the metadata table is empty (no known
         # domain). This was a known error in marine v2.0
         if mgyg not in sample_accessions:
             continue
