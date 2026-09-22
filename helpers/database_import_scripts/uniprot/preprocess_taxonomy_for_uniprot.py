@@ -715,8 +715,9 @@ def parse_metadata(metadata_file):
 
 def resolve_gca_accession(genome_accession):
     """
-    Returns the GCA accession for a genome accession from the metadata table, or "N/A" if there isn't one.
-    - GCA accessions are used as they are
+    Returns the GCA accession (without version) for a genome accession from the metadata table, or "N/A" if there
+    isn't one.
+    - GCA accessions are used as they are (GCA accessions in the metadata table never have a version)
     - ERZ accessions are assemblies submitted as analyses and never get a GCA accession
     - WGS set accessions are looked up in ENA (exact version only)
     - anything else is not recognised
@@ -732,9 +733,18 @@ def resolve_gca_accession(genome_accession):
     return "N/A"
 
 
+def strip_accession_version(accession):
+    """
+    Remove the version from an accession, e.g. GCA_000210095.1 -> GCA_000210095. The rest of the script only works
+    with unversioned GCA accessions, matching the metadata table: the ENA Portal API does not find assemblies by a
+    version that is no longer current, and the unversioned accession is also what is written to the output.
+    """
+    return accession.split(".")[0]
+
+
 def lookup_gca_from_wgs_set(wgs_set):
     """
-    Look up the GCA accession that uses this exact WGS set (prefix and version) in ENA.
+    Look up the GCA accession (without version) that uses this exact WGS set (prefix and version) in ENA.
     If the WGS set version is outdated (the assembly now points at a newer version), no GCA is returned: we don't
     want to report a GCA accession whose sequences differ from the genome in the catalogue.
     """
@@ -752,7 +762,7 @@ def lookup_gca_from_wgs_set(wgs_set):
     # Only keep hits whose WGS set matches ours exactly, including the version. ENA may report the WGS set with the
     # contig number padding (e.g. CABIVX020000000), so compare on the prefix+version part.
     matching_gcas = {
-        hit.get("accession", "") for hit in data
+        strip_accession_version(hit.get("accession", "")) for hit in data
         if hit.get("wgs_set", "").upper().startswith(wgs_set.upper()) and hit.get("accession", "").startswith("GCA_")
     }
     if len(matching_gcas) == 1:
