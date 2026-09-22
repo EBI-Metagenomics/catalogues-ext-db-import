@@ -30,6 +30,15 @@ DUMP_DICT = {
     "r232": "2025-09-01"
 }
 
+TAXONKIT = "/hps/nobackup/rdf/metagenomics/service-team/users/tgurbich/Taxonkit/taxonkit-0.20.0"
+
+# Lineage format for taxonkit reformat2. In March 2025 NCBI replaced rank "superkingdom" with "domain" (Archaea,
+# Bacteria, Eukaryota) and "acellular root" (Viruses); listing all three keeps this working with old and new taxdumps.
+TAXONKIT_DOMAIN = "{domain|acellular root|superkingdom}"
+TAXONKIT_LINEAGE_FORMAT = TAXONKIT_DOMAIN + ";{phylum};{class};{order};{family};{genus};{species}"
+TAXONKIT_PREFIXED_LINEAGE_FORMAT = ("d__" + TAXONKIT_DOMAIN +
+                                    ";p__{phylum};c__{class};o__{order};f__{family};g__{genus};s__{species}")
+
 # WGS set accessions: 4-letter (legacy) or 6-letter prefix followed by a 2-digit version, e.g. ABCD01, CABIVX02
 WGS_SET_RE = re.compile(r"^[A-Z]{4}(?:[A-Z]{2})?\d{2}$")
 
@@ -593,14 +602,11 @@ def lookup_lineage(insdc_taxid, taxdump_path):
 
     def get_lineage(taxid, taxdump_path):
         assert taxid, "Unable to use taxdump for an unknown taxid"
-        command = ["/hps/nobackup/rdf/metagenomics/service-team/users/tgurbich/Taxonkit/taxonkit", "reformat",
-                   "--data-dir", taxdump_path, "-I", "1", "-P"]
+        command = [TAXONKIT, "reformat2", "--data-dir", taxdump_path, "-I", "1",
+                   "-f", TAXONKIT_PREFIXED_LINEAGE_FORMAT]
         result = subprocess.run(command, input=taxid, text=True, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, check=True)
-        detected_lineage = result.stdout.strip().split("\t")[1]
-        if detected_lineage.lower().startswith(("k__bacteria", "k__archaea")):
-            detected_lineage = detected_lineage.replace("k__", "d__")
-        return detected_lineage
+        return result.stdout.strip().split("\t")[1]
 
     logging.debug(f"Looking up lineage for taxid {insdc_taxid} in ENA.")
     try:
@@ -610,7 +616,7 @@ def lookup_lineage(insdc_taxid, taxdump_path):
         logging.error(f"Unable to retrieve lineage from ENA due to error: {ena_e}. Trying taxonkit.")
         try:
             lineage = get_lineage(insdc_taxid, taxdump_path)
-            if lineage == ";;;;;;":
+            if strip_rank_prefixes(lineage) == ";;;;;;":
                 raise Exception("Empty lineage in taxdump for {}".format(insdc_taxid))
             logging.debug(f"Got INSDC lineage from taxdump: {lineage}")
             return lineage
@@ -618,7 +624,7 @@ def lookup_lineage(insdc_taxid, taxdump_path):
             logging.error("Error: {}".format(str(e)))
             try:
                 lineage = get_lineage(insdc_taxid, taxdump_path)
-                if lineage == ";;;;;;":
+                if strip_rank_prefixes(lineage) == ";;;;;;":
                     raise Exception(f"Empty lineage in taxdump for {insdc_taxid}")
                 logging.debug(f"Got INSDC lineage from taxdump: {lineage}.")
                 return lineage
@@ -717,7 +723,7 @@ def resolve_gca_accession(genome_accession):
     """
     Returns the GCA accession (without version) for a genome accession from the metadata table, or "N/A" if there
     isn't one.
-    - GCA accessions are used as they are
+    - GCA accessions are used as they are, minus the version if there is one
     - ERZ accessions are assemblies submitted as analyses and never get a GCA accession
     - WGS set accessions are looked up in ENA (exact version only)
     - anything else is not recognised
@@ -736,8 +742,8 @@ def resolve_gca_accession(genome_accession):
 def strip_accession_version(accession):
     """
     Remove the version from an accession, e.g. GCA_000210095.1 -> GCA_000210095. The rest of the script only works
-    with unversioned GCA accessions. The ENA Portal API does not find assemblies by a
-    version that is no longer current, and the unversioned accession is also what is written to the output.
+    with unversioned GCA accessions: the ENA Portal API does not find assemblies by a version that is no longer
+    current, and the unversioned accession is also what is written to the output.
     """
     return accession.split(".")[0]
 
@@ -825,8 +831,7 @@ def run_taxonkit_on_dict(lowest_taxon_mgyg_dict, lowest_taxon_lineage_dict, taxd
     logging.debug("Function run_taxonkit_on_dict")
     input_data = "\n".join(
         set(lowest_taxon_mgyg_dict.values()))  # remove duplicate taxa and save all lines to a variable
-    command = ["/hps/nobackup/rdf/metagenomics/service-team/users/tgurbich/Taxonkit/taxonkit", "name2taxid",
-               "--data-dir", taxdump_path]
+    command = [TAXONKIT, "name2taxid", "--data-dir", taxdump_path]
     try:
         result = subprocess.run(command, input=input_data, text=True, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, check=True)
@@ -868,10 +873,7 @@ def resolve_with_synonyms(taxon_name, taxid, lineage, matching_lineage, synonyms
 
 def get_lineage_for_taxid(taxid, taxdump_path):
     """Fetch lineage string for a taxid using taxonkit."""
-    command = [
-        "/hps/nobackup/rdf/metagenomics/service-team/users/tgurbich/Taxonkit/taxonkit",
-        "reformat", "--data-dir", taxdump_path, "-I", "1"
-    ]
+    command = [TAXONKIT, "reformat2", "--data-dir", taxdump_path, "-I", "1", "-f", TAXONKIT_LINEAGE_FORMAT]
     result = subprocess.run(command, input=taxid, text=True,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
 
