@@ -740,7 +740,7 @@ def get_gca_accession(sample):
 
 
 def lookup_taxid_online(gca_acc):
-    logging.debug("Function lookup_taxid_online")
+    logging.debug(f"Function lookup_taxid_online: {gca_acc}")
     if gca_acc == "N/A":
         return "N/A"
     api_endpoint = "https://www.ebi.ac.uk/ena/portal/api/search"
