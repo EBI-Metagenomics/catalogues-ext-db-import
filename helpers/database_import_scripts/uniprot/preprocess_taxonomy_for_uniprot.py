@@ -717,13 +717,13 @@ def resolve_gca_accession(genome_accession):
     """
     Returns the GCA accession (without version) for a genome accession from the metadata table, or "N/A" if there
     isn't one.
-    - GCA accessions are used as they are (GCA accessions in the metadata table never have a version)
+    - GCA accessions are used as they are
     - ERZ accessions are assemblies submitted as analyses and never get a GCA accession
     - WGS set accessions are looked up in ENA (exact version only)
     - anything else is not recognised
     """
     if genome_accession.startswith("GCA_"):
-        return genome_accession
+        return strip_accession_version(genome_accession)
     if genome_accession.startswith("ERZ"):
         logging.debug(f"{genome_accession} is an ERZ accession; no GCA accession expected")
         return "N/A"
@@ -736,7 +736,7 @@ def resolve_gca_accession(genome_accession):
 def strip_accession_version(accession):
     """
     Remove the version from an accession, e.g. GCA_000210095.1 -> GCA_000210095. The rest of the script only works
-    with unversioned GCA accessions, matching the metadata table: the ENA Portal API does not find assemblies by a
+    with unversioned GCA accessions. The ENA Portal API does not find assemblies by a
     version that is no longer current, and the unversioned accession is also what is written to the output.
     """
     return accession.split(".")[0]
