@@ -27,7 +27,8 @@ DUMP_DICT = {
     "r207": "2022-03-01",
     "r214": "2022-12-01",
     "r220": "2023-09-01",
-    "r226": "2024-09-01"
+    "r226": "2024-09-01",
+    "r232": "2025-09-01"
 }
 
 
@@ -1088,8 +1089,9 @@ def parse_args():
                         help='Path to the output file where the preprocessed taxonomy file will be stored.')
     parser.add_argument('-v', '--taxonomy-version', choices=['1', '2'], default="2",
                         help='Version of GTDB-Tk, "1" or "2". Default = "2".')
-    parser.add_argument('-r', '--taxonomy-release', choices=['r202', 'r207', 'r214', 'r220', 'r226'], default="r226",
-                        help='Version of GTDB, "r202", "r207", "r214", "r220", "r226". Default = "r226".')
+    parser.add_argument('-r', '--taxonomy-release', choices=['r202', 'r207', 'r214', 'r220', 'r226', 'r232'],
+                        default="r232",
+                        help='Version of GTDB, "r202", "r207", "r214", "r220", "r226", "r232". Default = "r232".')
     parser.add_argument('-m', '--metadata', required=True,
                         help='Path to the metadata table.')
     parser.add_argument('-s', '--species-level-taxonomy', action='store_true',
