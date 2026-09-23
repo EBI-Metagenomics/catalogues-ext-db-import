@@ -2,7 +2,7 @@
 
 set -e
 
-VERSION="1.1.0"
+VERSION="1.2.0"
 DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # The script runs RNACentral and UniProt file generation, validation and some output reorganisation
