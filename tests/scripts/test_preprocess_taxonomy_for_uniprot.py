@@ -5,8 +5,12 @@ from helpers.database_import_scripts.uniprot.preprocess_taxonomy_for_uniprot imp
     get_species_level_taxonomy,
     match_taxid_to_gca,
     parse_metadata,
+    select_dump,
 )
 
+# Never read on CI: lookup_lineage() queries ENA first and only falls back to
+# taxonkit + this taxdump if ENA fails. Any string works as long as ENA is up.
+TAXDUMP = select_dump("r232")
 
 class TestPreprocessTaxonomyForUniprot(unittest.TestCase):
     def setUp(self):
@@ -14,10 +18,8 @@ class TestPreprocessTaxonomyForUniprot(unittest.TestCase):
             Path(__file__).resolve().parent
             / "fixtures/preprocess_taxonomy_for_uniprot/sample_metadata.tsv"
         )
-        self.gca_accessions, self.sample_accessions = parse_metadata(self.metadata_file)
-        self.mgyg_to_gca, self.gca_to_taxid = match_taxid_to_gca(
-            self.gca_accessions, self.sample_accessions, 2
-        )
+        self.genome_accessions = parse_metadata(self.metadata_file)
+        self.mgyg_to_gca, self.gca_to_taxid = match_taxid_to_gca(self.genome_accessions, 2)
 
     def test_match_taxid_to_gca(self):
         expected_gca_to_taxid = {
