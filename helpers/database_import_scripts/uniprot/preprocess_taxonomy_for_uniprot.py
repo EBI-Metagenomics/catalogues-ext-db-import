@@ -762,8 +762,10 @@ def lookup_gca_from_wgs_set(wgs_set):
         "fields": "accession,wgs_set",
         "format": "json"
     }
-    r = run_query_request(api_endpoint, query_params)
-    data = r.json() if r.text.strip() else []
+    try:
+        data = run_query_json(api_endpoint, query_params)
+    except Exception as e:
+        raise RuntimeError(f"ENA assembly lookup failed for WGS set {wgs_set}: {e}") from e
 
     # Only keep hits whose WGS set matches ours exactly, including the version. ENA may report the WGS set with the
     # contig number padding (e.g. CABIVX020000000), so compare on the prefix+version part.
@@ -796,20 +798,19 @@ def lookup_taxid_online(gca_acc):
         "format": "json"
     }
 
-    r = run_query_request(api_endpoint, query_params)
-    if r.ok:
-        data = r.json()
-        taxid = str(data[0].get("tax_id", "")).strip() if data else ""
-        if not taxid:
-            # The assembly search returned nothing (e.g. the GCA is suppressed, withdrawn or not yet indexed)
-            # or returned a record without a taxid. We can't use the submitter taxonomy, so mark the GCA as
-            # "invalid" so that the genome falls back to converted GTDB taxonomy, the same route used for
-            # GCAs with unusable taxonomy in remove_invalid_taxa and process_mgyg_entry.
-            logging.warning(f"No taxid found in ENA assembly search for {gca_acc}; will use GTDB taxonomy instead")
-            return "invalid"
-        return taxid
-    else:
-        sys.exit("Failed to fetch taxid for GCA accession {}. Aborting.".format(gca_acc))
+    try:
+        data = run_query_json(api_endpoint, query_params)
+    except Exception as e:
+        sys.exit(f"Failed to fetch taxid for GCA accession {gca_acc}: {e}. Aborting.")
+    taxid = str(data[0].get("tax_id", "")).strip() if data else ""
+    if not taxid:
+        # The assembly search returned nothing (e.g. the GCA is suppressed, withdrawn or not yet indexed)
+        # or returned a record without a taxid. We can't use the submitter taxonomy, so mark the GCA as
+        # "invalid" so that the genome falls back to converted GTDB taxonomy, the same route used for
+        # GCAs with unusable taxonomy in remove_invalid_taxa and process_mgyg_entry.
+        logging.warning(f"No taxid found in ENA assembly search for {gca_acc}; will use GTDB taxonomy instead")
+        return "invalid"
+    return taxid
 
 
 def load_synonyms(taxdump_path):
@@ -1126,6 +1127,42 @@ def run_query_request(api_url, query_params):
     r = requests.get(api_url, params=query_params)
     r.raise_for_status()
     return r
+
+
+class ENAResponseError(Exception):
+    """ENA returned HTTP 200 but the body could not be parsed as JSON."""
+    pass
+
+
+@retry(tries=5, delay=10, backoff=1.5)
+def run_query_json(api_url, query_params):
+    """
+    Run a Portal API query and return the parsed JSON. Parsing happens inside the retry, so a malformed body
+    (e.g. truncated, or with an error message appended mid-stream) is retried instead of crashing the run.
+    Every malformed response is logged at ERROR level (visible with the default --logging error) with the full
+    request URL, HTTP status, body length and the part of the body around the position where parsing failed.
+    """
+    r = requests.get(api_url, params=query_params, timeout=120)
+    r.raise_for_status()
+    text = r.text.strip()
+    if not text:
+        return []
+    try:
+        return json.loads(text)
+    except ValueError as e:
+        pos = getattr(e, "pos", 0) or 0
+        details = (
+            f"Malformed JSON from ENA.\n"
+            f"  URL: {r.url}\n"
+            f"  HTTP status: {r.status_code}; Content-Type: {r.headers.get('Content-Type')}; "
+            f"body length: {len(text)} chars\n"
+            f"  Parse error: {e}\n"
+            f"  Body start (first 500 chars): {text[:500]!r}\n"
+            f"  Body around error position {pos}: {text[max(0, pos - 300):pos + 300]!r}\n"
+            f"  Body end (last 300 chars): {text[-300:]!r}"
+        )
+        logging.error(details)
+        raise ENAResponseError(details) from e
 
 
 def parse_args():
