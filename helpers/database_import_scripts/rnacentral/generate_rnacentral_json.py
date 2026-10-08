@@ -10,7 +10,6 @@ import os
 import pytz
 import re
 import sys
-import time
 
 from Bio import SeqIO
 from Bio.Seq import Seq
@@ -507,28 +506,47 @@ def convert_bin_sample(biosample):
 
 
 def get_publications_from_xml(project):
-    extracted_publications = list()
-    counter = 1
-    study_links = None
-    while counter < 5:
-        try:
-            xml_data = load_xml(project)
-            study_links = xml_data["STUDY_SET"]["STUDY"]["STUDY_LINKS"]
-            break
-        except:
-            counter += 1
-            logging.info("XML data retrieval failed for project {}. Retrying. Attempt {}.".
-                         format(project, counter))
-    if not study_links:
+    """Returns PubMed IDs linked to an ENA study/project accession.
+
+    ENA's browser API may return either a STUDY_SET (legacy) or a PROJECT_SET
+    (study accessions such as ERP/SRP now resolve to their PRJ project).
+    Connection errors and transient 5xx are retried by SESSION.
+    """
+    xml_data = load_xml(project)
+    if not xml_data:
         logging.error("Failed to get XML for project {}".format(project))
-        sys.exit()
-    for study_link in study_links.keys():
-        for element in study_links[study_link]:
-            if "XREF_LINK" in element and "DB" in element["XREF_LINK"]:
-                if element["XREF_LINK"]["DB"].lower() == "pubmed":
-                    pub = "PMID:{}".format(element["XREF_LINK"]["ID"])
-                    extracted_publications.append(pub)
+        sys.exit("ERROR: unable to retrieve ENA XML for project {}".format(project))
+    links = extract_links_from_xml(xml_data)
+    if links is None:
+        logging.error("Unexpected ENA XML structure for project {}: top-level keys {}".format(
+            project, list(xml_data.keys())))
+        sys.exit("ERROR: unrecognised ENA XML format for project {}".format(project))
+    extracted_publications = list()
+    for element in links:
+        xref = element.get("XREF_LINK") if isinstance(element, dict) else None
+        if xref and xref.get("DB", "").lower() == "pubmed":
+            extracted_publications.append("PMID:{}".format(xref["ID"]))
     return set(extracted_publications)
+
+
+def extract_links_from_xml(xml_data):
+    """Returns the list of link elements from a STUDY_SET or PROJECT_SET record,
+    an empty list if the record has no links, or None if neither format matches.
+    """
+    for set_key, record_key, links_key, link_key in (
+            ("PROJECT_SET", "PROJECT", "PROJECT_LINKS", "PROJECT_LINK"),
+            ("STUDY_SET", "STUDY", "STUDY_LINKS", "STUDY_LINK")):
+        if set_key in xml_data:
+            record = xml_data[set_key][record_key]
+            if isinstance(record, list):
+                record = record[0]
+            links_block = record.get(links_key) or {}
+            links = links_block.get(link_key, [])
+            # xmltodict returns a dict, not a list, when there is a single link
+            if isinstance(links, dict):
+                links = [links]
+            return links
+    return None
 
 
 def get_project_accession(biosample):
