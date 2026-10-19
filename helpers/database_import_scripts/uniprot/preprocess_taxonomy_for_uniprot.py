@@ -19,7 +19,6 @@ from retry import retry
 
 import gtdb_to_ncbi_majority_vote, gtdb_to_ncbi_majority_vote_v2
 
-
 DB_DIR = "/nfs/production/rdf/metagenomics/pipelines/prod/assembly-pipeline/taxonomy_dbs/"
 
 DUMP_DICT = {
@@ -27,8 +26,21 @@ DUMP_DICT = {
     "r207": "2022-03-01",
     "r214": "2022-12-01",
     "r220": "2023-09-01",
-    "r226": "2024-09-01"
+    "r226": "2024-09-01",
+    "r232": "2025-09-01"
 }
+
+TAXONKIT = "/hps/nobackup/rdf/metagenomics/service-team/users/tgurbich/Taxonkit/taxonkit-0.20.0"
+
+# Lineage format for taxonkit reformat2. In March 2025 NCBI replaced rank "superkingdom" with "domain" (Archaea,
+# Bacteria, Eukaryota) and "acellular root" (Viruses); listing all three keeps this working with old and new taxdumps.
+TAXONKIT_DOMAIN = "{domain|acellular root|superkingdom}"
+TAXONKIT_LINEAGE_FORMAT = TAXONKIT_DOMAIN + ";{phylum};{class};{order};{family};{genus};{species}"
+TAXONKIT_PREFIXED_LINEAGE_FORMAT = ("d__" + TAXONKIT_DOMAIN +
+                                    ";p__{phylum};c__{class};o__{order};f__{family};g__{genus};s__{species}")
+
+# WGS set accessions: 4-letter (legacy) or 6-letter prefix followed by a 2-digit version, e.g. ABCD01, CABIVX02
+WGS_SET_RE = re.compile(r"^[A-Z]{4}(?:[A-Z]{2})?\d{2}$")
 
 
 class Source(Enum):
@@ -50,16 +62,16 @@ class EntryResult:
 
 
 def process_mgyg_entry(
-    mgyg: str,
-    gca_accession: str,
-    gca_to_taxid: dict,
-    gca_taxid_to_lineage: dict,
-    lineage_dict: dict,
-    lowest_taxon_mgyg_dict: dict,
-    taxid_dict: dict,
-    unknown_gca_mgyg_and_lineage: dict,
-    species_level_taxonomy: bool,
-    taxdump_path: str,
+        mgyg: str,
+        gca_accession: str,
+        gca_to_taxid: dict,
+        gca_taxid_to_lineage: dict,
+        lineage_dict: dict,
+        lowest_taxon_mgyg_dict: dict,
+        taxid_dict: dict,
+        unknown_gca_mgyg_and_lineage: dict,
+        species_level_taxonomy: bool,
+        taxdump_path: str,
 ) -> EntryResult:
     """
     Returns an EntryResult with all required fields.
@@ -166,14 +178,14 @@ def process_mgyg_entry(
 
 
 def main(
-    gtdbtk_folder,
-    outfile,
-    taxonomy_version,
-    taxonomy_release,
-    metadata_file,
-    species_level_taxonomy,
-    threads,
-    logging_mode,
+        gtdbtk_folder,
+        outfile,
+        taxonomy_version,
+        taxonomy_release,
+        metadata_file,
+        species_level_taxonomy,
+        threads,
+        logging_mode,
 ):
     log_levels = {
         'error': logging.ERROR,
@@ -192,13 +204,12 @@ def main(
     if not os.path.exists(taxdump_path):
         raise ValueError(f"Taxonomy release {taxonomy_release} does not exist at {taxdump_path}")
 
-    # for each MGYG accession, get the corresponding GCA (where available) and sample accessions from the metadata file
-    gca_accessions, sample_accessions = parse_metadata(metadata_file)
+    # for each species representative MGYG, get the genome accession from the metadata table
+    genome_accessions = parse_metadata(metadata_file)
 
-    # supplement the gca accessions from the metadata table by looking them up in ENA. For each GCA accession, look up
-    # corresponding taxid in ENA
-    # Some of the GCA accessions may be "N/A" if they don't exist
-    mgyg_to_gca, gca_to_taxid = match_taxid_to_gca(gca_accessions, sample_accessions, threads)
+    # resolve each genome accession to a GCA accession (GCA as is, WGS set via ENA lookup, ERZ and anything else
+    # becomes "N/A"), then look up the taxid of each GCA accession in ENA
+    mgyg_to_gca, gca_to_taxid = match_taxid_to_gca(genome_accessions, threads)
 
     # remove N/A's if present before looking up lineages
     na_true = False
@@ -244,7 +255,7 @@ def main(
             logging.debug(f"{mgyg}: {lineage}")
 
         # lookup tax id
-        lowest_taxon_mgyg_dict, lowest_taxon_lineage_dict = get_lowest_taxa(lineage_dict, sample_accessions)
+        lowest_taxon_mgyg_dict, lowest_taxon_lineage_dict = get_lowest_taxa(lineage_dict, genome_accessions)
 
         # lowest_taxon_mgyg_dict: # key = mgyg, value = name of the lowest known taxon
         # lowest_taxon_lineage_dict: # key = lowest taxon, value = list of lineages where this taxon is lowest
@@ -370,6 +381,11 @@ def remove_invalid_taxa(gca_to_taxid, gca_taxid_to_lineage):
     invalid_flag = False
     logging.debug("=================== Starting invalid check ===================")
     for gca_acc, taxid in gca_to_taxid.items():
+        if taxid == "invalid":
+            # Already marked invalid in lookup_taxid_online because ENA returned no taxid for this GCA
+            invalid_flag = True
+            logging.debug(f"----------------> GCA WITHOUT TAXID IN ENA, TREATING AS INVALID: {gca_acc}")
+            continue
         lineage = gca_taxid_to_lineage[taxid]
         lowest_taxon = get_lowest_taxon(lineage)[0]
         invalid_conditions = [
@@ -389,8 +405,9 @@ def remove_invalid_taxa(gca_to_taxid, gca_taxid_to_lineage):
 
 def match_lineage_to_gca_taxid(gca_to_taxid, threads, taxdump_path):
     logging.debug("Function match_lineage_to_gca_taxid")
-    taxids = list(gca_to_taxid.values())
-    # Create a partial function to add the taxdump_path argument (technical solution to be able to run concurrent 
+    # Skip GCAs already marked "invalid" (no taxid could be retrieved from ENA); there is no lineage to look up
+    taxids = list({taxid for taxid in gca_to_taxid.values() if taxid != "invalid"})
+    # Create a partial function to add the taxdump_path argument (technical solution to be able to run concurrent
     # with two arguments
     partial_lookup_lineage = partial(lookup_lineage, taxdump_path=taxdump_path)
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
@@ -399,15 +416,12 @@ def match_lineage_to_gca_taxid(gca_to_taxid, threads, taxdump_path):
     return taxid_to_lineage
 
 
-def match_taxid_to_gca(gca_accessions, sample_accessions, threads):
+def match_taxid_to_gca(genome_accessions, threads):
     logging.debug("Function match_taxid_to_gca")
-    mgyg_to_gca = dict()
-    for mgyg, sample in sample_accessions.items():
-        if mgyg in gca_accessions:
-            mgyg_to_gca[mgyg] = gca_accessions[mgyg]
-        else:
-            mgyg_to_gca[mgyg] = get_gca_accession(sample_accessions[mgyg])
-    gca_list = list(mgyg_to_gca.values())
+    mgygs = list(genome_accessions.keys())
+    with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
+        mgyg_to_gca = dict(zip(mgygs, executor.map(resolve_gca_accession, [genome_accessions[m] for m in mgygs])))
+    gca_list = list(set(mgyg_to_gca.values()))
     with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
         gca_to_taxid = {gca_acc: taxid for gca_acc, taxid in zip(gca_list, executor.map(lookup_taxid_online, gca_list))}
     return mgyg_to_gca, gca_to_taxid
@@ -450,7 +464,7 @@ def query_scientific_name_from_ena(scientific_name, search_rank=False):
     response = run_full_url_request(url)
 
     try:
-        # Will raise exception if response status code is non-200 
+        # Will raise exception if response status code is non-200
         response.raise_for_status()
     except requests.exceptions.HTTPError:
         if search_rank:
@@ -588,14 +602,11 @@ def lookup_lineage(insdc_taxid, taxdump_path):
 
     def get_lineage(taxid, taxdump_path):
         assert taxid, "Unable to use taxdump for an unknown taxid"
-        command = ["/hps/nobackup/rdf/metagenomics/service-team/users/tgurbich/Taxonkit/taxonkit", "reformat", 
-                   "--data-dir", taxdump_path, "-I", "1", "-P"]
+        command = [TAXONKIT, "reformat2", "--data-dir", taxdump_path, "-I", "1",
+                   "-f", TAXONKIT_PREFIXED_LINEAGE_FORMAT]
         result = subprocess.run(command, input=taxid, text=True, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, check=True)
-        detected_lineage = result.stdout.strip().split("\t")[1]
-        if detected_lineage.lower().startswith(("k__bacteria", "k__archaea")):
-            detected_lineage = detected_lineage.replace("k__", "d__")
-        return detected_lineage
+        return result.stdout.strip().split("\t")[1]
 
     logging.debug(f"Looking up lineage for taxid {insdc_taxid} in ENA.")
     try:
@@ -605,7 +616,7 @@ def lookup_lineage(insdc_taxid, taxdump_path):
         logging.error(f"Unable to retrieve lineage from ENA due to error: {ena_e}. Trying taxonkit.")
         try:
             lineage = get_lineage(insdc_taxid, taxdump_path)
-            if lineage == ";;;;;;":
+            if strip_rank_prefixes(lineage) == ";;;;;;":
                 raise Exception("Empty lineage in taxdump for {}".format(insdc_taxid))
             logging.debug(f"Got INSDC lineage from taxdump: {lineage}")
             return lineage
@@ -613,7 +624,7 @@ def lookup_lineage(insdc_taxid, taxdump_path):
             logging.error("Error: {}".format(str(e)))
             try:
                 lineage = get_lineage(insdc_taxid, taxdump_path)
-                if lineage == ";;;;;;":
+                if strip_rank_prefixes(lineage) == ";;;;;;":
                     raise Exception(f"Empty lineage in taxdump for {insdc_taxid}")
                 logging.debug(f"Got INSDC lineage from taxdump: {lineage}.")
                 return lineage
@@ -690,56 +701,93 @@ def reformat_lineage(lineage, scientific_name):
 
 
 def parse_metadata(metadata_file):
-    gca_accessions = dict()
-    sample_accessions = dict()
+    """
+    Returns a dictionary where key = MGYG accession of a species representative, value = its genome accession from
+    the metadata table (a GCA, an ERZ or a WGS set accession).
+    """
+    genome_accessions = dict()
     original_df = pd.read_csv(metadata_file, sep='\t')
     filtered_df = original_df[original_df['Genome'] == original_df['Species_rep']]
     for index, row in filtered_df.iterrows():
-        # Remove any records with unknown taxonomy according to GTDB-Tk. This should never happen 
+        # Remove any records with unknown taxonomy according to GTDB-Tk. This should never happen
         # except in marine v2.0 where this was a known issue
         if str(row['Lineage']).startswith("d__;"):
             logging.info(f"Skipping accession {row['Genome_accession']}; invalid taxonomy: {row['Lineage']}")
             continue
-        sample_accessions[row['Genome']] = row['Sample_accession']
-        if row['Genome_accession'].startswith("GCA"):
-            gca_accessions[row['Genome']] = row['Genome_accession']
-            logging.debug(f"GCA accession already in metadata table {row['Genome_accession']}")
-    return gca_accessions, sample_accessions
+        genome_accession = row['Genome_accession']
+        genome_accessions[row['Genome']] = genome_accession.strip() if isinstance(genome_accession, str) else ""
+    return genome_accessions
 
 
-def get_gca_accession(sample):
-    logging.debug(sample)
-    if not isinstance(sample, str):
+def resolve_gca_accession(genome_accession):
+    """
+    Returns the GCA accession (without version) for a genome accession from the metadata table, or "N/A" if there
+    isn't one.
+    - GCA accessions are used as they are, minus the version if there is one
+    - ERZ accessions are assemblies submitted as analyses and never get a GCA accession
+    - WGS set accessions are looked up in ENA (exact version only)
+    - anything else is not recognised
+    """
+    if genome_accession.startswith("GCA_"):
+        return strip_accession_version(genome_accession)
+    if genome_accession.startswith("ERZ"):
+        logging.debug(f"{genome_accession} is an ERZ accession; no GCA accession expected")
         return "N/A"
-    if sample == "NA" or sample.startswith("P"):
-        return "N/A"
-    api_endpoint = "https://www.ebi.ac.uk/ena/portal/api/filereport"
-    full_url = "{}?accession={}&result=assembly&fields=accession".format(api_endpoint, sample)
-    r = run_full_url_request(full_url)
-    if r.ok:
-        lines = r.text.split('\n')
-        if len(lines) > 3:
-            # check if the same GCA accession is duplicated; if there are distinct GCAs linked to the same 
-            # sample accession, don't take any of them because we don't know which one is correct
-            filtered_lines = list(set([item for item in lines if item != "" and item != "accession"]))
-            if len(filtered_lines) == 1:
-                gca_line = filtered_lines[0]
-            else:
-                gca_line = "N/A"
-        else:
-            try:
-                gca_line = next(line for line in lines if line.startswith("GCA"))
-            except:
-                gca_line = "N/A"
-        logging.debug(gca_line)
-        return gca_line
+    if WGS_SET_RE.match(genome_accession):
+        return lookup_gca_from_wgs_set(genome_accession)
+    logging.warning(f"Unrecognised genome accession format '{genome_accession}'; treating as having no GCA accession")
+    return "N/A"
+
+
+def strip_accession_version(accession):
+    """
+    Remove the version from an accession, e.g. GCA_000210095.1 -> GCA_000210095. The rest of the script only works
+    with unversioned GCA accessions: the ENA Portal API does not find assemblies by a version that is no longer
+    current, and the unversioned accession is also what is written to the output.
+    """
+    return accession.split(".")[0]
+
+
+def lookup_gca_from_wgs_set(wgs_set):
+    """
+    Look up the GCA accession (without version) that uses this exact WGS set (prefix and version) in ENA.
+    If the WGS set version is outdated (the assembly now points at a newer version), no GCA is returned: we don't
+    want to report a GCA accession whose sequences differ from the genome in the catalogue.
+    """
+    logging.debug(f"Function lookup_gca_from_wgs_set: {wgs_set}")
+    api_endpoint = "https://www.ebi.ac.uk/ena/portal/api/search"
+    query_params = {
+        "result": "assembly",
+        "query": 'wgs_set="{}"'.format(wgs_set),
+        "fields": "accession,wgs_set",
+        "format": "json"
+    }
+    try:
+        data = run_query_json(api_endpoint, query_params)
+    except Exception as e:
+        raise RuntimeError(f"ENA assembly lookup failed for WGS set {wgs_set}: {e}") from e
+
+    # Only keep hits whose WGS set matches ours exactly, including the version. ENA may report the WGS set with the
+    # contig number padding (e.g. CABIVX020000000), so compare on the prefix+version part.
+    matching_gcas = {
+        strip_accession_version(hit.get("accession", "")) for hit in data
+        if hit.get("wgs_set", "").upper().startswith(wgs_set.upper()) and hit.get("accession", "").startswith("GCA_")
+    }
+    if len(matching_gcas) == 1:
+        gca = matching_gcas.pop()
+        logging.debug(f"WGS set {wgs_set} -> {gca}")
+        return gca
+    if not matching_gcas:
+        logging.warning(f"No GCA accession found in ENA for WGS set {wgs_set} (not found, or this WGS set version is "
+                        f"outdated); treating as having no GCA accession")
     else:
-        logging.error(f"Failed to load data from ENA API when querying sample {sample}")
-        sys.exit("Aborting.")
+        logging.warning(f"Multiple GCA accessions found in ENA for WGS set {wgs_set}: {sorted(matching_gcas)}; "
+                        f"treating as having no GCA accession")
+    return "N/A"
 
 
 def lookup_taxid_online(gca_acc):
-    logging.debug("Function lookup_taxid_online")
+    logging.debug(f"Function lookup_taxid_online: {gca_acc}")
     if gca_acc == "N/A":
         return "N/A"
     api_endpoint = "https://www.ebi.ac.uk/ena/portal/api/search"
@@ -750,13 +798,19 @@ def lookup_taxid_online(gca_acc):
         "format": "json"
     }
 
-    r = run_query_request(api_endpoint, query_params)
-    if r.ok:
-        data = r.json()
-        taxid = data[0]['tax_id']
-        return taxid
-    else:
-        sys.exit("Failed to fetch taxid for GCA accession {}. Aborting.".format(gca_acc))
+    try:
+        data = run_query_json(api_endpoint, query_params)
+    except Exception as e:
+        sys.exit(f"Failed to fetch taxid for GCA accession {gca_acc}: {e}. Aborting.")
+    taxid = str(data[0].get("tax_id", "")).strip() if data else ""
+    if not taxid:
+        # The assembly search returned nothing (e.g. the GCA is suppressed, withdrawn or not yet indexed)
+        # or returned a record without a taxid. We can't use the submitter taxonomy, so mark the GCA as
+        # "invalid" so that the genome falls back to converted GTDB taxonomy, the same route used for
+        # GCAs with unusable taxonomy in remove_invalid_taxa and process_mgyg_entry.
+        logging.warning(f"No taxid found in ENA assembly search for {gca_acc}; will use GTDB taxonomy instead")
+        return "invalid"
+    return taxid
 
 
 def load_synonyms(taxdump_path):
@@ -778,8 +832,7 @@ def run_taxonkit_on_dict(lowest_taxon_mgyg_dict, lowest_taxon_lineage_dict, taxd
     logging.debug("Function run_taxonkit_on_dict")
     input_data = "\n".join(
         set(lowest_taxon_mgyg_dict.values()))  # remove duplicate taxa and save all lines to a variable
-    command = ["/hps/nobackup/rdf/metagenomics/service-team/users/tgurbich/Taxonkit/taxonkit", "name2taxid", 
-               "--data-dir", taxdump_path]
+    command = [TAXONKIT, "name2taxid", "--data-dir", taxdump_path]
     try:
         result = subprocess.run(command, input=input_data, text=True, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, check=True)
@@ -821,10 +874,7 @@ def resolve_with_synonyms(taxon_name, taxid, lineage, matching_lineage, synonyms
 
 def get_lineage_for_taxid(taxid, taxdump_path):
     """Fetch lineage string for a taxid using taxonkit."""
-    command = [
-        "/hps/nobackup/rdf/metagenomics/service-team/users/tgurbich/Taxonkit/taxonkit",
-        "reformat", "--data-dir", taxdump_path, "-I", "1"
-    ]
+    command = [TAXONKIT, "reformat2", "--data-dir", taxdump_path, "-I", "1", "-f", TAXONKIT_LINEAGE_FORMAT]
     result = subprocess.run(command, input=taxid, text=True,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
 
@@ -844,10 +894,10 @@ def get_lineage_for_taxid(taxid, taxdump_path):
 
 def filter_taxid_dict(taxid_dict, lowest_taxon_lineage_dict, taxdump_path):
     """
-    Resolve cases where multiple taxids are assigned to the same taxon by matching domain and phylum. 
+    Resolve cases where multiple taxids are assigned to the same taxon by matching domain and phylum.
     If domain and phylum match multiple taxon ids, the function picks the first one.
     If no match is found by using taxonkit, the script checks synonyms in names.dmp.
-    
+
     @param taxid_dict: key = taxon name, value = list of taxids
     @param lowest_taxon_lineage_dict: key = taxon name, value = list of lineages where the taxon is lowest
     @param taxdump_path: path to the taxdump folder
@@ -980,7 +1030,7 @@ def pick_lineage(expected_domain, expected_phylum, lineage_list, dump_lineage):
     for lineage in lineage_list:
         domain, phylum = parse_domain_phylum(lineage)
         if domain == expected_domain and phylum == expected_phylum and \
-            last_non_empty_segment_position(lineage) == target_depth:
+                last_non_empty_segment_position(lineage) == target_depth:
             return lineage
     sys.exit("ERROR: could not resolve lineages: {} {} {}".format(expected_domain, expected_phylum, lineage_list))
 
@@ -1016,15 +1066,15 @@ def process_taxonkit_output(taxonkit_output):
     return taxid_dict, failed_to_get_taxonkit_taxid
 
 
-def get_lowest_taxa(tax_dict, sample_accessions):
+def get_lowest_taxa(tax_dict, genome_accessions):
     logging.debug("Function get_lowest_taxa")
     lowest_taxon_mgyg_dict = dict()
     lowest_taxon_lineage_dict = dict()
     for mgyg, lineage in tax_dict.items():
         # Don't try to process accessions that we have previously filtered out when reading the metadata table.
-        # This should only happen in cases where the taxonomic lineage in the metadata table is empty (no known 
+        # This should only happen in cases where the taxonomic lineage in the metadata table is empty (no known
         # domain). This was a known error in marine v2.0
-        if mgyg not in sample_accessions:
+        if mgyg not in genome_accessions:
             continue
         lowest_known_taxon, lowest_known_rank = get_lowest_taxon(lineage)
         lowest_taxon_mgyg_dict[mgyg] = lowest_known_taxon
@@ -1079,6 +1129,42 @@ def run_query_request(api_url, query_params):
     return r
 
 
+class ENAResponseError(Exception):
+    """ENA returned HTTP 200 but the body could not be parsed as JSON."""
+    pass
+
+
+@retry(tries=5, delay=10, backoff=1.5)
+def run_query_json(api_url, query_params):
+    """
+    Run a Portal API query and return the parsed JSON. Parsing happens inside the retry, so a malformed body
+    (e.g. truncated, or with an error message appended mid-stream) is retried instead of crashing the run.
+    Every malformed response is logged at ERROR level (visible with the default --logging error) with the full
+    request URL, HTTP status, body length and the part of the body around the position where parsing failed.
+    """
+    r = requests.get(api_url, params=query_params, timeout=120)
+    r.raise_for_status()
+    text = r.text.strip()
+    if not text:
+        return []
+    try:
+        return json.loads(text)
+    except ValueError as e:
+        pos = getattr(e, "pos", 0) or 0
+        details = (
+            f"Malformed JSON from ENA.\n"
+            f"  URL: {r.url}\n"
+            f"  HTTP status: {r.status_code}; Content-Type: {r.headers.get('Content-Type')}; "
+            f"body length: {len(text)} chars\n"
+            f"  Parse error: {e}\n"
+            f"  Body start (first 500 chars): {text[:500]!r}\n"
+            f"  Body around error position {pos}: {text[max(0, pos - 300):pos + 300]!r}\n"
+            f"  Body end (last 300 chars): {text[-300:]!r}"
+        )
+        logging.error(details)
+        raise ENAResponseError(details) from e
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="The script takes in a GTDB-Tk output folder and "
                                                  "outputs NCBI taxonomy.")
@@ -1088,8 +1174,9 @@ def parse_args():
                         help='Path to the output file where the preprocessed taxonomy file will be stored.')
     parser.add_argument('-v', '--taxonomy-version', choices=['1', '2'], default="2",
                         help='Version of GTDB-Tk, "1" or "2". Default = "2".')
-    parser.add_argument('-r', '--taxonomy-release', choices=['r202', 'r207', 'r214', 'r220', 'r226'], default="r226",
-                        help='Version of GTDB, "r202", "r207", "r214", "r220", "r226". Default = "r226".')
+    parser.add_argument('-r', '--taxonomy-release', choices=['r202', 'r207', 'r214', 'r220', 'r226', 'r232'],
+                        default="r232",
+                        help='Version of GTDB, "r202", "r207", "r214", "r220", "r226", "r232". Default = "r232".')
     parser.add_argument('-m', '--metadata', required=True,
                         help='Path to the metadata table.')
     parser.add_argument('-s', '--species-level-taxonomy', action='store_true',
