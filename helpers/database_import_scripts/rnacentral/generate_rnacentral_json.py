@@ -65,31 +65,44 @@ def main(rfam_info, metadata, outfile, deoverlap_dir, gff_dir, fasta_dir, previo
     final_dict.setdefault("data", list())
     with open(metadata, "r") as f:
         logging.info("Starting to load metadata...")
+        header = f.readline().rstrip("\r\n").split("\t")
+        col_idx = {name: i for i, name in enumerate(header)}
+        required_cols = ["Genome", "Genome_accession", "Species_rep", "Lineage", "Sample_accession",
+                         "Study_accession", "FTP_download"]
+        missing_cols = [c for c in required_cols if c not in col_idx]
+        if missing_cols:
+            sys.exit("Metadata file {} is missing required columns: {}".format(metadata, ", ".join(missing_cols)))
         for line in f:
-            if not line.startswith("Genome"):
-                parts = line.strip().split("\t")
-                mgnify_accession, insdc_accession, species_rep, taxonomy, sample_accession, reported_project, ftp = \
-                    parts[0], parts[12], parts[13], parts[14], parts[15], parts[16], parts[19]
-                # metadata json is only produced once for the entire catalogue
-                if not metadata_json:
-                    metadata_json, catalogue_name = generate_metadata_dict(ftp, produced_date)
-                # only process species reps
-                if mgnify_accession == species_rep:
-                    logging.info("Looking up accession {}".format(mgnify_accession))
-                    json_data, sample_publication_mapping = generate_data_dict(
-                        mgnify_accession, sample_accession, taxonomy, deoverlap_dir, gff_dir, fasta_dir, rfam_lengths,
-                        sample_publication_mapping, catalogue_name, reported_project, insdc_accession)
-                    if json_data:
-                        if previous_json:
-                            # Check which entries are different in this version and bump the version in the json
-                            for index, new_entry in enumerate(json_data):
-                                if new_entry["primaryId"] in previous_primary_ids:
-                                    old_entry = get_entry(previous_json_data, json_data[index]["primaryId"], "data")
-                                    new_entry = get_entry(json_data, json_data[index]["primaryId"], None)
-                                    if old_entry != new_entry:
-                                        json_data = up_the_version(json_data, index, old_entry["version"])
-                        final_dict["data"].extend(json_data)
-                    logging.info("Done with accession {}".format(mgnify_accession))
+            if not line.strip():
+                continue
+            parts = line.rstrip("\r\n").split("\t")
+            mgnify_accession = parts[col_idx["Genome"]]
+            insdc_accession = parts[col_idx["Genome_accession"]]
+            species_rep = parts[col_idx["Species_rep"]]
+            taxonomy = parts[col_idx["Lineage"]]
+            sample_accession = parts[col_idx["Sample_accession"]]
+            reported_project = parts[col_idx["Study_accession"]]
+            ftp = parts[col_idx["FTP_download"]]
+            # metadata json is only produced once for the entire catalogue
+            if not metadata_json:
+                metadata_json, catalogue_name = generate_metadata_dict(ftp, produced_date)
+            # only process species reps
+            if mgnify_accession == species_rep:
+                logging.info("Looking up accession {}".format(mgnify_accession))
+                json_data, sample_publication_mapping = generate_data_dict(
+                    mgnify_accession, sample_accession, taxonomy, deoverlap_dir, gff_dir, fasta_dir, rfam_lengths,
+                    sample_publication_mapping, catalogue_name, reported_project, insdc_accession)
+                if json_data:
+                    if previous_json:
+                        # Check which entries are different in this version and bump the version in the json
+                        for index, new_entry in enumerate(json_data):
+                            if new_entry["primaryId"] in previous_primary_ids:
+                                old_entry = get_entry(previous_json_data, json_data[index]["primaryId"], "data")
+                                new_entry = get_entry(json_data, json_data[index]["primaryId"], None)
+                                if old_entry != new_entry:
+                                    json_data = up_the_version(json_data, index, old_entry["version"])
+                    final_dict["data"].extend(json_data)
+                logging.info("Done with accession {}".format(mgnify_accession))
     final_dict["metaData"] = metadata_json
     logging.info("Done loading data, preparing the JSON file...")
     with open(outfile, "w") as file_out:
