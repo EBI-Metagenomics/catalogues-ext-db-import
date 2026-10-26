@@ -8,12 +8,13 @@ DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 # The script runs RNACentral and UniProt file generation, validation and some output reorganisation
 
 function Usage {
-    echo "Usage: $0 [-f ftp-folder-name] [-v catalogue-version] [-r /path/to/results/folder]"
+    echo "Usage: $0 [-f ftp-folder-name] [-v catalogue-version] [-r /path/to/results/folder] [-e]"
     echo "Options:"
     echo "-f          FTP name of the catalogue, for example, human-oral or non-model-fish-gut"
     echo "-v          Catalogue version, for example, v1.0"
     echo "-r          Full path to nextflow pipeline results folder"
     echo "-j          Full path to the previous catalogue JSON, if this is an update (skip if this is not an update)"
+    echo "-e          Eukaryotic catalogue: take species reps from column 16 of the metadata and skip UniProt file generation"
     echo "--version   Show script version"
     exit 1
 }
@@ -31,7 +32,11 @@ esac
 
 
 GET_REPS() {
-    cut -f14 "${RESULTS_PATH}"/genomes-all_metadata.tsv | grep -v "Species" | sort -u
+    local col=14
+    if [[ "$EUK" == true ]]; then
+        col=16
+    fi
+    cut -f"${col}" "${RESULTS_PATH}"/genomes-all_metadata.tsv | grep -v "Species" | sort -u
 }
 
 
@@ -176,12 +181,14 @@ function GenerateUniprotFiles {
 }
 
 
-while getopts 'f:v:r:j:' flag; do
+EUK=false
+while getopts 'f:v:r:j:e' flag; do
     case "${flag}" in
         f) export CATALOGUE_FOLDER=$OPTARG ;;
         v) export CATALOGUE_VERSION=$OPTARG ;;
         r) export RESULTS_PATH=$OPTARG ;;
         j) PREV_JSON_PATH=$OPTARG ;;
+        e) EUK=true ;;
         *) Usage exit 1 ;;
     esac
 done
@@ -199,4 +206,8 @@ cd "${RESULTS_PATH}"
 GenerateRNACentralJSON
 CheckRNACentralErrors
 RunRNACentralValidator
-GenerateUniprotFiles
+if [[ "$EUK" == true ]]; then
+    echo "Eukaryotic catalogue: skipping UniProt file generation"
+else
+    GenerateUniprotFiles
+fi
