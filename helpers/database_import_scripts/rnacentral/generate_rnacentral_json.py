@@ -303,12 +303,8 @@ def get_annotation_record(annotation, field):
 
 
 def pass_seq_check(seq):
-    count_n = seq.lower().count('n')
-    total_length = len(seq)
-    if count_n / total_length < 0.1:
-        return True
-    else:
-        return False
+    uncertain = sum(1 for s in seq.upper() if s not in "ACGT")
+    return uncertain / len(seq) <= 0.1
 
 
 def get_seq_name(annotation, annotation_source):
