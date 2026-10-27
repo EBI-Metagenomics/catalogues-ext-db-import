@@ -51,7 +51,8 @@ def make_session():
 SESSION = make_session()
 
 
-def main(rfam_info, metadata, outfile, deoverlap_dir, gff_dir, fasta_dir, previous_json):
+def main(rfam_info, metadata, outfile, deoverlap_dir, gff_dir, fasta_dir, previous_json, euk=False):
+    taxonomy_source = "NCBI" if euk else "GTDB"
     if previous_json:
         previous_json_data = load_previous_json(previous_json)
         previous_primary_ids = get_primary_ids(previous_json_data)
@@ -91,7 +92,7 @@ def main(rfam_info, metadata, outfile, deoverlap_dir, gff_dir, fasta_dir, previo
                 logging.info("Looking up accession {}".format(mgnify_accession))
                 json_data, sample_publication_mapping = generate_data_dict(
                     mgnify_accession, sample_accession, taxonomy, deoverlap_dir, gff_dir, fasta_dir, rfam_lengths,
-                    sample_publication_mapping, catalogue_name, reported_project, insdc_accession)
+                    sample_publication_mapping, catalogue_name, reported_project, insdc_accession, taxonomy_source)
                 if json_data:
                     if previous_json:
                         # Check which entries are different in this version and bump the version in the json
@@ -212,7 +213,7 @@ def parse_ftp(ftp):
 
 def generate_data_dict(mgnify_accession, sample_accession, taxonomy, deoverlap_dir,
                        gff_dir, fasta_dir, rfam_lengths, sample_publication_mapping, catalogue_name,
-                       reported_project, insdc_accession):
+                       reported_project, insdc_accession, taxonomy_source):
     global SKIP_CMSCAN, SKIP_GFF, GOOD, BAD_SEQUENCE
     deoverlap_path = os.path.join(deoverlap_dir, "{}.cmscan-deoverlap.tbl".format(mgnify_accession))
     if not os.path.exists(deoverlap_path):
@@ -257,7 +258,7 @@ def generate_data_dict(mgnify_accession, sample_accession, taxonomy, deoverlap_d
                             GOOD += 1
                             data_dict = dict()
                             data_dict["primaryId"] = get_primary_id(annotation)
-                            data_dict["inferredPhylogeny"] = "GTDB:{}".format(taxonomy)
+                            data_dict["inferredPhylogeny"] = "{}:{}".format(taxonomy_source, taxonomy)
                             data_dict["sequence"] = get_sequence(seq_records, contig, start, end, strand)
                             if not pass_seq_check(data_dict["sequence"]):
                                 BAD_SEQUENCE += 1
@@ -733,10 +734,12 @@ def parse_args():
                              'previously and submitted to RNAcentral). This is only possible if the current '
                              'catalogue is an updated version of a previously generated catalogue. If that is the '
                              'case, provide the previous RNAcentral JSON here.')
+    parser.add_argument('--euk', action='store_true',
+                        help='Use for eukaryotic catalogues: report taxonomy as NCBI instead of GTDB.')
     return parser.parse_args()
 
 
 if __name__ == '__main__':
     args = parse_args()
-    main(args.rfam_info, args.metadata, args.outfile, args.deoverlap_dir, args.gff_dir, args.fasta_dir, 
-         args.previous_json)
+    main(args.rfam_info, args.metadata, args.outfile, args.deoverlap_dir, args.gff_dir, args.fasta_dir,
+         args.previous_json, args.euk)
