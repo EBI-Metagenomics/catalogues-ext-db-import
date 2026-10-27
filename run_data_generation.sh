@@ -65,6 +65,10 @@ function GenerateRNACentralJSON {
         rna_cmd="$rna_cmd --previous-json $PREV_JSON_PATH"
     fi
 
+    if [[ "$EUK" == true ]]; then
+        rna_cmd="$rna_cmd --euk"
+    fi
+
     eval $rna_cmd
 
 
