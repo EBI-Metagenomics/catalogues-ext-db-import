@@ -213,7 +213,7 @@ def parse_ftp(ftp):
 
 def generate_data_dict(mgnify_accession, sample_accession, taxonomy, deoverlap_dir,
                        gff_dir, fasta_dir, rfam_lengths, sample_publication_mapping, catalogue_name,
-                       reported_project, insdc_accession, taxonomy_source):
+                       reported_project, insdc_accession, taxonomy_source="GTDB"):
     global SKIP_CMSCAN, SKIP_GFF, GOOD, BAD_SEQUENCE
     deoverlap_path = os.path.join(deoverlap_dir, "{}.cmscan-deoverlap.tbl".format(mgnify_accession))
     if not os.path.exists(deoverlap_path):
